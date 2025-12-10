@@ -1,0 +1,34 @@
+C:\AmazonWeb\BackEnd\src\Infrastructure\bin\Debug\net7.0\Ecommerce.Infrastructure.deps.json
+C:\AmazonWeb\BackEnd\src\Infrastructure\bin\Debug\net7.0\Ecommerce.Infrastructure.dll
+C:\AmazonWeb\BackEnd\src\Infrastructure\bin\Debug\net7.0\Ecommerce.Infrastructure.pdb
+C:\AmazonWeb\BackEnd\src\Infrastructure\bin\Debug\net7.0\Ecommerce.Application.dll
+C:\AmazonWeb\BackEnd\src\Infrastructure\bin\Debug\net7.0\Ecommerce.Domain.dll
+C:\AmazonWeb\BackEnd\src\Infrastructure\bin\Debug\net7.0\Ecommerce.Application.pdb
+C:\AmazonWeb\BackEnd\src\Infrastructure\bin\Debug\net7.0\Ecommerce.Domain.pdb
+C:\AmazonWeb\BackEnd\src\Infrastructure\obj\Debug\net7.0\Ecommerce.Infrastructure.csproj.AssemblyReference.cache
+C:\AmazonWeb\BackEnd\src\Infrastructure\obj\Debug\net7.0\Ecommerce.Infrastructure.GeneratedMSBuildEditorConfig.editorconfig
+C:\AmazonWeb\BackEnd\src\Infrastructure\obj\Debug\net7.0\Ecommerce.Infrastructure.csproj.CoreCompileInputs.cache
+C:\AmazonWeb\BackEnd\src\Infrastructure\obj\Debug\net7.0\Ecommerce.Infrastructure.csproj.CopyComplete
+C:\AmazonWeb\BackEnd\src\Infrastructure\obj\Debug\net7.0\Ecommerce.Infrastructure.dll
+C:\AmazonWeb\BackEnd\src\Infrastructure\obj\Debug\net7.0\refint\Ecommerce.Infrastructure.dll
+C:\AmazonWeb\BackEnd\src\Infrastructure\obj\Debug\net7.0\Ecommerce.Infrastructure.pdb
+C:\AmazonWeb\BackEnd\src\Infrastructure\obj\Debug\net7.0\ref\Ecommerce.Infrastructure.dll
+C:\AmazonWeb\BackEnd\src\Infrastructure\bin\Debug\net7.0\Ecommerce.Infrastructure.runtimeconfig.json
+C:\AmazonWeb\BackEnd\src\Infrastructure\obj\Debug\net7.0\Ecommerce.Infrastructure.genruntimeconfig.cache
+C:\Users\Ruben Vasquez\Desktop\BackEnd\src\Infrastructure\obj\Debug\net7.0\Ecommerce.Infrastructure.dll
+C:\Users\Ruben Vasquez\Desktop\BackEnd\src\Infrastructure\obj\Debug\net7.0\refint\Ecommerce.Infrastructure.dll
+C:\Users\Ruben Vasquez\Desktop\BackEnd\src\Infrastructure\obj\Debug\net7.0\Ecommerce.Infrastructure.pdb
+C:\Users\Ruben Vasquez\Desktop\BackEnd\src\Infrastructure\bin\Debug\net7.0\Ecommerce.Infrastructure.deps.json
+C:\Users\Ruben Vasquez\Desktop\BackEnd\src\Infrastructure\bin\Debug\net7.0\Ecommerce.Infrastructure.runtimeconfig.json
+C:\Users\Ruben Vasquez\Desktop\BackEnd\src\Infrastructure\bin\Debug\net7.0\Ecommerce.Infrastructure.dll
+C:\Users\Ruben Vasquez\Desktop\BackEnd\src\Infrastructure\bin\Debug\net7.0\Ecommerce.Infrastructure.pdb
+C:\Users\Ruben Vasquez\Desktop\BackEnd\src\Infrastructure\bin\Debug\net7.0\Ecommerce.Application.dll
+C:\Users\Ruben Vasquez\Desktop\BackEnd\src\Infrastructure\bin\Debug\net7.0\Ecommerce.Domain.dll
+C:\Users\Ruben Vasquez\Desktop\BackEnd\src\Infrastructure\bin\Debug\net7.0\Ecommerce.Application.pdb
+C:\Users\Ruben Vasquez\Desktop\BackEnd\src\Infrastructure\bin\Debug\net7.0\Ecommerce.Domain.pdb
+C:\Users\Ruben Vasquez\Desktop\BackEnd\src\Infrastructure\obj\Debug\net7.0\Ecommerce.Infrastructure.csproj.AssemblyReference.cache
+C:\Users\Ruben Vasquez\Desktop\BackEnd\src\Infrastructure\obj\Debug\net7.0\Ecommerce.Infrastructure.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\Ruben Vasquez\Desktop\BackEnd\src\Infrastructure\obj\Debug\net7.0\Ecommerce.Infrastructure.csproj.CoreCompileInputs.cache
+C:\Users\Ruben Vasquez\Desktop\BackEnd\src\Infrastructure\obj\Debug\net7.0\Ecommerce.Infrastructure.csproj.CopyComplete
+C:\Users\Ruben Vasquez\Desktop\BackEnd\src\Infrastructure\obj\Debug\net7.0\Ecommerce.Infrastructure.genruntimeconfig.cache
+C:\Users\Ruben Vasquez\Desktop\BackEnd\src\Infrastructure\obj\Debug\net7.0\ref\Ecommerce.Infrastructure.dll

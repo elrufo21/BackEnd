@@ -1,0 +1,24 @@
+C:\AmazonWeb\BackEnd\src\Core\Ecommerce.Domain\bin\Debug\net7.0\Ecommerce.Domain.deps.json
+C:\AmazonWeb\BackEnd\src\Core\Ecommerce.Domain\bin\Debug\net7.0\Ecommerce.Domain.dll
+C:\AmazonWeb\BackEnd\src\Core\Ecommerce.Domain\bin\Debug\net7.0\Ecommerce.Domain.pdb
+C:\AmazonWeb\BackEnd\src\Core\Ecommerce.Domain\obj\Debug\net7.0\Ecommerce.Domain.csproj.AssemblyReference.cache
+C:\AmazonWeb\BackEnd\src\Core\Ecommerce.Domain\obj\Debug\net7.0\Ecommerce.Domain.GeneratedMSBuildEditorConfig.editorconfig
+C:\AmazonWeb\BackEnd\src\Core\Ecommerce.Domain\obj\Debug\net7.0\Ecommerce.Domain.AssemblyInfoInputs.cache
+C:\AmazonWeb\BackEnd\src\Core\Ecommerce.Domain\obj\Debug\net7.0\Ecommerce.Domain.AssemblyInfo.cs
+C:\AmazonWeb\BackEnd\src\Core\Ecommerce.Domain\obj\Debug\net7.0\Ecommerce.Domain.csproj.CoreCompileInputs.cache
+C:\AmazonWeb\BackEnd\src\Core\Ecommerce.Domain\obj\Debug\net7.0\Ecommerce.Domain.dll
+C:\AmazonWeb\BackEnd\src\Core\Ecommerce.Domain\obj\Debug\net7.0\refint\Ecommerce.Domain.dll
+C:\AmazonWeb\BackEnd\src\Core\Ecommerce.Domain\obj\Debug\net7.0\Ecommerce.Domain.pdb
+C:\AmazonWeb\BackEnd\src\Core\Ecommerce.Domain\obj\Debug\net7.0\ref\Ecommerce.Domain.dll
+C:\Users\Ruben Vasquez\Desktop\BackEnd\src\Core\Ecommerce.Domain\bin\Debug\net7.0\Ecommerce.Domain.deps.json
+C:\Users\Ruben Vasquez\Desktop\BackEnd\src\Core\Ecommerce.Domain\bin\Debug\net7.0\Ecommerce.Domain.dll
+C:\Users\Ruben Vasquez\Desktop\BackEnd\src\Core\Ecommerce.Domain\bin\Debug\net7.0\Ecommerce.Domain.pdb
+C:\Users\Ruben Vasquez\Desktop\BackEnd\src\Core\Ecommerce.Domain\obj\Debug\net7.0\Ecommerce.Domain.csproj.AssemblyReference.cache
+C:\Users\Ruben Vasquez\Desktop\BackEnd\src\Core\Ecommerce.Domain\obj\Debug\net7.0\Ecommerce.Domain.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\Ruben Vasquez\Desktop\BackEnd\src\Core\Ecommerce.Domain\obj\Debug\net7.0\Ecommerce.Domain.AssemblyInfoInputs.cache
+C:\Users\Ruben Vasquez\Desktop\BackEnd\src\Core\Ecommerce.Domain\obj\Debug\net7.0\Ecommerce.Domain.AssemblyInfo.cs
+C:\Users\Ruben Vasquez\Desktop\BackEnd\src\Core\Ecommerce.Domain\obj\Debug\net7.0\Ecommerce.Domain.csproj.CoreCompileInputs.cache
+C:\Users\Ruben Vasquez\Desktop\BackEnd\src\Core\Ecommerce.Domain\obj\Debug\net7.0\Ecommerce.Domain.dll
+C:\Users\Ruben Vasquez\Desktop\BackEnd\src\Core\Ecommerce.Domain\obj\Debug\net7.0\refint\Ecommerce.Domain.dll
+C:\Users\Ruben Vasquez\Desktop\BackEnd\src\Core\Ecommerce.Domain\obj\Debug\net7.0\Ecommerce.Domain.pdb
+C:\Users\Ruben Vasquez\Desktop\BackEnd\src\Core\Ecommerce.Domain\obj\Debug\net7.0\ref\Ecommerce.Domain.dll
