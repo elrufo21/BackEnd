@@ -26,6 +26,14 @@ public class LineaController : ControllerBase
     }
 
     [AllowAnonymous]
+    [HttpPut("{id}", Name = "EditarLinea")]
+    [ProducesResponseType((int)HttpStatusCode.OK)]
+    public IActionResult EditarLinea(int id, [FromBody] Linea linea)
+    {
+        return Ok(_mediator.Editar(id, linea));
+    }
+
+    [AllowAnonymous]
     [HttpDelete("{id}", Name = "EliminarLinea")]
     [ProducesResponseType((int)HttpStatusCode.OK)]
     public IActionResult Eliminarlinea(int id)

@@ -3,9 +3,14 @@ using System.Text.Json.Serialization;
 using Ecommerce.Api.Middlewares;
 using Ecommerce.Application;
 using Ecommerce.Application.Contracts.Infrastructure;
+using Ecommerce.Application.Contracts.Areas;
+using Ecommerce.Application.Contracts.Maquinas;
+using Ecommerce.Application.Contracts.Personales;
 using Ecommerce.Application.Contracts.Lineas;
+using Ecommerce.Api.Converters;
 using Ecommerce.Application.Contracts.NotaPedido;
 using Ecommerce.Application.Contracts.Productos;
+using Ecommerce.Application.Contracts.Companias;
 using Ecommerce.Application.Contracts.TemporalVenta;
 using Ecommerce.Application.Contracts.Usuarios;
 using Ecommerce.Application.Contracts.Cliente;
@@ -38,12 +43,16 @@ builder.Services.AddDbContext<EcommerceDbContext>(options =>
 builder.Services.AddMediatR(typeof(GetProductListQueryHandler).Assembly);
 
 builder.Services.AddScoped<IManageImageService, ManageImageService>();
+builder.Services.AddTransient<IArea, AreaRepository>();
+builder.Services.AddTransient<IPersonal, PersonalRepository>();
+builder.Services.AddTransient<IMaquina, MaquinaRepository>();
 builder.Services.AddTransient<ILinea, LineaRepository>();
 builder.Services.AddTransient<IUsuario, UsuarioRepository>();
 builder.Services.AddTransient<IProducto, ProductoRepository>();
 builder.Services.AddTransient<ITemporalVenta, TemporalVentaRepository>();
 builder.Services.AddTransient<INotaPedido, NotaPedidoRepository>();
 builder.Services.AddTransient<ICliente, ClienteRepository>();
+builder.Services.AddTransient<ICompania, CompaniaRepository>();
 
 // Add services to the container.
 
@@ -52,7 +61,10 @@ builder.Services.AddControllers(opt =>
     var policy = new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build();
     opt.Filters.Add(new AuthorizeFilter(policy));
 }).AddJsonOptions(x =>
-                x.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles);
+{
+    x.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
+    x.JsonSerializerOptions.Converters.Add(new NullableDateTimeConverter());
+});
 
 IdentityBuilder identityBuilder = builder.Services.AddIdentityCore<Usuario>();
 identityBuilder = new IdentityBuilder(identityBuilder.UserType, identityBuilder.Services);

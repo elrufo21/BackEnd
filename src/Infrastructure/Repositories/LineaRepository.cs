@@ -39,6 +39,21 @@ public class LineaRepository : ILinea
         return rows > 0;
     }
 
+    public bool Editar(int id, Linea linea)
+    {
+        const string sql = "UPDATE Sublinea SET NombreSublinea = @Nombre, CodigoSunat = @Codigo WHERE IdSubLinea = @Id";
+        using var con = new SqlConnection(_connectionString);
+        using var cmd = new SqlCommand(sql, con);
+        cmd.Parameters.AddWithValue("@Id", id);
+        cmd.Parameters.AddWithValue("@Nombre", linea.NombreSublinea ?? string.Empty);
+        cmd.Parameters.AddWithValue("@Codigo", linea.CodigoSunat ?? string.Empty);
+        con.Open();
+        var rows = cmd.ExecuteNonQuery();
+        return rows > 0;
+    }
+
+
+
     public IReadOnlyList<EGeneral> Listar()
     {
         var lista = new List<EGeneral>();
