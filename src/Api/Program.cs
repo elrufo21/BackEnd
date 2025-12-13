@@ -13,7 +13,7 @@ using Ecommerce.Application.Contracts.Productos;
 using Ecommerce.Application.Contracts.Companias;
 using Ecommerce.Application.Contracts.TemporalVenta;
 using Ecommerce.Application.Contracts.Usuarios;
-using Ecommerce.Application.Contracts.Cliente;
+using Ecommerce.Application.Contracts.Clientes;
 using Ecommerce.Application.Features.Products.Queries.GetProductList;
 using Ecommerce.Domain;
 using Ecommerce.Infrastructure.ImageCloudinary;
