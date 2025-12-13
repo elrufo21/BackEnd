@@ -26,7 +26,4 @@ public class PaymentController : ControllerBase
     {
         return await _mediator.Send(request);
     }
-
-
-
 }

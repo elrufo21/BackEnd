@@ -5554,23 +5554,23 @@
     ]
   },
   "packageFolders": {
-    "C:\\Users\\Ruben Vasquez\\.nuget\\packages\\": {},
+    "C:\\Users\\Andre\\.nuget\\packages\\": {},
     "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages": {}
   },
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "C:\\Users\\Ruben Vasquez\\Desktop\\BackEnd\\src\\api\\Ecommerce.Api.csproj",
+      "projectUniqueName": "C:\\Users\\Andre\\Downloads\\SGO_V2\\BackEnd\\src\\Api\\Ecommerce.Api.csproj",
       "projectName": "Ecommerce.Api",
-      "projectPath": "C:\\Users\\Ruben Vasquez\\Desktop\\BackEnd\\src\\api\\Ecommerce.Api.csproj",
-      "packagesPath": "C:\\Users\\Ruben Vasquez\\.nuget\\packages\\",
-      "outputPath": "C:\\Users\\Ruben Vasquez\\Desktop\\BackEnd\\src\\api\\obj\\",
+      "projectPath": "C:\\Users\\Andre\\Downloads\\SGO_V2\\BackEnd\\src\\Api\\Ecommerce.Api.csproj",
+      "packagesPath": "C:\\Users\\Andre\\.nuget\\packages\\",
+      "outputPath": "C:\\Users\\Andre\\Downloads\\SGO_V2\\BackEnd\\src\\Api\\obj\\",
       "projectStyle": "PackageReference",
       "fallbackFolders": [
         "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
       ],
       "configFilePaths": [
-        "C:\\Users\\Ruben Vasquez\\AppData\\Roaming\\NuGet\\NuGet.Config",
+        "C:\\Users\\Andre\\AppData\\Roaming\\NuGet\\NuGet.Config",
         "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
         "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
       ],
@@ -5585,11 +5585,11 @@
         "net7.0": {
           "targetAlias": "net7.0",
           "projectReferences": {
-            "C:\\Users\\Ruben Vasquez\\Desktop\\BackEnd\\src\\Core\\Ecommerce.Application\\Ecommerce.Application.csproj": {
-              "projectPath": "C:\\Users\\Ruben Vasquez\\Desktop\\BackEnd\\src\\Core\\Ecommerce.Application\\Ecommerce.Application.csproj"
+            "C:\\Users\\Andre\\Downloads\\SGO_V2\\BackEnd\\src\\Core\\Ecommerce.Application\\Ecommerce.Application.csproj": {
+              "projectPath": "C:\\Users\\Andre\\Downloads\\SGO_V2\\BackEnd\\src\\Core\\Ecommerce.Application\\Ecommerce.Application.csproj"
             },
-            "C:\\Users\\Ruben Vasquez\\Desktop\\BackEnd\\src\\Infrastructure\\Ecommerce.Infrastructure.csproj": {
-              "projectPath": "C:\\Users\\Ruben Vasquez\\Desktop\\BackEnd\\src\\Infrastructure\\Ecommerce.Infrastructure.csproj"
+            "C:\\Users\\Andre\\Downloads\\SGO_V2\\BackEnd\\src\\Infrastructure\\Ecommerce.Infrastructure.csproj": {
+              "projectPath": "C:\\Users\\Andre\\Downloads\\SGO_V2\\BackEnd\\src\\Infrastructure\\Ecommerce.Infrastructure.csproj"
             }
           }
         }

@@ -1,3 +1,4 @@
+using System.Data;
 using Ecommerce.Application.Contracts.Maquinas;
 using Ecommerce.Domain;
 using Microsoft.AspNetCore.Builder;
@@ -28,6 +29,7 @@ public class MaquinaRepository : IMaquina
         cmd.Parameters.AddWithValue("@SerieNC", maquina.SerieNC ?? string.Empty);
         cmd.Parameters.AddWithValue("@SerieBoleta", maquina.SerieBoleta ?? string.Empty);
         cmd.Parameters.AddWithValue("@Tiketera", maquina.Tiketera ?? string.Empty);
+        if (con.State == ConnectionState.Open) con.Close();
         con.Open();
         var rows = cmd.ExecuteNonQuery();
         return rows > 0;
@@ -52,6 +54,7 @@ public class MaquinaRepository : IMaquina
         cmd.Parameters.AddWithValue("@SerieNC", maquina.SerieNC ?? string.Empty);
         cmd.Parameters.AddWithValue("@SerieBoleta", maquina.SerieBoleta ?? string.Empty);
         cmd.Parameters.AddWithValue("@Tiketera", maquina.Tiketera ?? string.Empty);
+        if (con.State == ConnectionState.Open) con.Close();
         con.Open();
         var rows = cmd.ExecuteNonQuery();
         return rows > 0;
@@ -63,6 +66,7 @@ public class MaquinaRepository : IMaquina
         using var con = new SqlConnection(_connectionString);
         using var cmd = new SqlCommand(sql, con);
         cmd.Parameters.AddWithValue("@Id", id);
+        if (con.State == ConnectionState.Open) con.Close();
         con.Open();
         var rows = cmd.ExecuteNonQuery();
         return rows > 0;
@@ -76,6 +80,7 @@ public class MaquinaRepository : IMaquina
 
         using var con = new SqlConnection(_connectionString);
         using var cmd = new SqlCommand(sql, con);
+        if (con.State == ConnectionState.Open) con.Close();
         con.Open();
         using var reader = cmd.ExecuteReader();
         while (reader.Read())

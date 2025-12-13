@@ -32,3 +32,20 @@ C:\Users\Ruben Vasquez\Desktop\BackEnd\src\Core\Ecommerce.Application\bin\Debug\
 C:\Users\Ruben Vasquez\Desktop\BackEnd\src\Core\Ecommerce.Application\obj\Debug\net7.0\Ecommerce.Application.csproj.CopyComplete
 C:\Users\Ruben Vasquez\Desktop\BackEnd\src\Core\Ecommerce.Application\obj\Debug\net7.0\Ecommerce.Application.genruntimeconfig.cache
 C:\Users\Ruben Vasquez\Desktop\BackEnd\src\Core\Ecommerce.Application\obj\Debug\net7.0\ref\Ecommerce.Application.dll
+C:\Users\Andre\Downloads\SGO_V2\BackEnd\src\Core\Ecommerce.Application\obj\Debug\net7.0\Ecommerce.Application.csproj.AssemblyReference.cache
+C:\Users\Andre\Downloads\SGO_V2\BackEnd\src\Core\Ecommerce.Application\obj\Debug\net7.0\Ecommerce.Application.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\Andre\Downloads\SGO_V2\BackEnd\src\Core\Ecommerce.Application\obj\Debug\net7.0\Ecommerce.Application.AssemblyInfoInputs.cache
+C:\Users\Andre\Downloads\SGO_V2\BackEnd\src\Core\Ecommerce.Application\obj\Debug\net7.0\Ecommerce.Application.AssemblyInfo.cs
+C:\Users\Andre\Downloads\SGO_V2\BackEnd\src\Core\Ecommerce.Application\obj\Debug\net7.0\Ecommerce.Application.csproj.CoreCompileInputs.cache
+C:\Users\Andre\Downloads\SGO_V2\BackEnd\src\Core\Ecommerce.Application\obj\Debug\net7.0\Ecommerce.Application.dll
+C:\Users\Andre\Downloads\SGO_V2\BackEnd\src\Core\Ecommerce.Application\obj\Debug\net7.0\refint\Ecommerce.Application.dll
+C:\Users\Andre\Downloads\SGO_V2\BackEnd\src\Core\Ecommerce.Application\obj\Debug\net7.0\Ecommerce.Application.pdb
+C:\Users\Andre\Downloads\SGO_V2\BackEnd\src\Core\Ecommerce.Application\bin\Debug\net7.0\Ecommerce.Application.deps.json
+C:\Users\Andre\Downloads\SGO_V2\BackEnd\src\Core\Ecommerce.Application\bin\Debug\net7.0\Ecommerce.Application.runtimeconfig.json
+C:\Users\Andre\Downloads\SGO_V2\BackEnd\src\Core\Ecommerce.Application\bin\Debug\net7.0\Ecommerce.Application.dll
+C:\Users\Andre\Downloads\SGO_V2\BackEnd\src\Core\Ecommerce.Application\bin\Debug\net7.0\Ecommerce.Application.pdb
+C:\Users\Andre\Downloads\SGO_V2\BackEnd\src\Core\Ecommerce.Application\bin\Debug\net7.0\Ecommerce.Domain.dll
+C:\Users\Andre\Downloads\SGO_V2\BackEnd\src\Core\Ecommerce.Application\bin\Debug\net7.0\Ecommerce.Domain.pdb
+C:\Users\Andre\Downloads\SGO_V2\BackEnd\src\Core\Ecommerce.Application\obj\Debug\net7.0\Ecommerce.Application.csproj.CopyComplete
+C:\Users\Andre\Downloads\SGO_V2\BackEnd\src\Core\Ecommerce.Application\obj\Debug\net7.0\Ecommerce.Application.genruntimeconfig.cache
+C:\Users\Andre\Downloads\SGO_V2\BackEnd\src\Core\Ecommerce.Application\obj\Debug\net7.0\ref\Ecommerce.Application.dll

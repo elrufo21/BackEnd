@@ -1,7 +1,6 @@
 using System.Data;
 using Ecommerce.Application.Contracts.Clientes;
 using Ecommerce.Domain;
-using Ecommerce.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
@@ -21,56 +20,28 @@ public class ClienteRepository : ICliente
 
     public bool Insertar(Cliente cliente)
     {
-        const string sql = @"INSERT INTO Cliente (
-                                ClienteRazon,
-                                ClienteRuc,
-                                ClienteDni,
-                                ClienteDireccion,
-                                ClienteTelefono,
-                                ClienteCorreo,
-                                ClienteEstado,
-                                ClienteDespacho,
-                                ClienteUsuario,
-                                ClienteFecha)
-                             VALUES (
-                                @ClienteRazon,
-                                @ClienteRuc,
-                                @ClienteDni,
-                                @ClienteDireccion,
-                                @ClienteTelefono,
-                                @ClienteCorreo,
-                                @ClienteEstado,
-                                @ClienteDespacho,
-                                @ClienteUsuario,
-                                @ClienteFecha)";
-
+        const string sql = "uspInsertarCliente";
         using var con = new SqlConnection(_connectionString);
         using var cmd = new SqlCommand(sql, con);
+        cmd.CommandTimeout = 300;
+        cmd.CommandType = CommandType.StoredProcedure;
+        cmd.Parameters.AddWithValue("@Id",0);
         AddParameters(cmd, cliente);
+        if (con.State == ConnectionState.Open) con.Close();
         con.Open();
         var rows = cmd.ExecuteNonQuery();
         return rows > 0;
     }
-
     public bool Editar(long id, Cliente cliente)
     {
-        const string sql = @"UPDATE Cliente SET
-                                ClienteRazon = @ClienteRazon,
-                                ClienteRuc = @ClienteRuc,
-                                ClienteDni = @ClienteDni,
-                                ClienteDireccion = @ClienteDireccion,
-                                ClienteTelefono = @ClienteTelefono,
-                                ClienteCorreo = @ClienteCorreo,
-                                ClienteEstado = @ClienteEstado,
-                                ClienteDespacho = @ClienteDespacho,
-                                ClienteUsuario = @ClienteUsuario,
-                                ClienteFecha = @ClienteFecha
-                             WHERE ClienteId = @Id";
-
+        const string sql = "uspInsertarCliente";
         using var con = new SqlConnection(_connectionString);
         using var cmd = new SqlCommand(sql, con);
+        cmd.CommandTimeout = 300;
+        cmd.CommandType = CommandType.StoredProcedure;
         cmd.Parameters.AddWithValue("@Id", id);
         AddParameters(cmd, cliente);
+        if (con.State == ConnectionState.Open) con.Close();
         con.Open();
         var rows = cmd.ExecuteNonQuery();
         return rows > 0;
@@ -78,10 +49,13 @@ public class ClienteRepository : ICliente
 
     public bool Eliminar(long id)
     {
-        const string sql = "DELETE FROM Cliente WHERE ClienteId = @Id";
+        const string sql = "uspEliminarCliente";
         using var con = new SqlConnection(_connectionString);
         using var cmd = new SqlCommand(sql, con);
+        cmd.CommandTimeout = 300;
+        cmd.CommandType = CommandType.StoredProcedure;
         cmd.Parameters.AddWithValue("@Id", id);
+        if (con.State == ConnectionState.Open) con.Close();
         con.Open();
         var rows = cmd.ExecuteNonQuery();
         return rows > 0;
@@ -90,21 +64,12 @@ public class ClienteRepository : ICliente
     public IReadOnlyList<Cliente> Listar()
     {
         var lista = new List<Cliente>();
-        const string sql = @"SELECT ClienteId,
-                                    ClienteRazon,
-                                    ClienteRuc,
-                                    ClienteDni,
-                                    ClienteDireccion,
-                                    ClienteTelefono,
-                                    ClienteCorreo,
-                                    ClienteEstado,
-                                    ClienteDespacho,
-                                    ClienteUsuario,
-                                    ClienteFecha
-                             FROM Cliente";
-
+        const string sql = "usppListarClientes";
         using var con = new SqlConnection(_connectionString);
         using var cmd = new SqlCommand(sql, con);
+        cmd.CommandTimeout = 300;
+        cmd.CommandType = CommandType.StoredProcedure;
+        if (con.State == ConnectionState.Open) con.Close();
         con.Open();
         using var reader = cmd.ExecuteReader();
         while (reader.Read())
@@ -145,6 +110,6 @@ public class ClienteRepository : ICliente
         cmd.Parameters.AddWithValue("@ClienteEstado", (object?)cliente.ClienteEstado ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@ClienteDespacho", (object?)cliente.ClienteDespacho ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@ClienteUsuario", (object?)cliente.ClienteUsuario ?? DBNull.Value);
-        cmd.Parameters.Add("@ClienteFecha", SqlDbType.DateTime).Value = (object?)cliente.ClienteFecha ?? DBNull.Value;
+        //cmd.Parameters.Add("@ClienteFecha", SqlDbType.DateTime).Value = (object?)cliente.ClienteFecha ?? DBNull.Value;
     }
 }

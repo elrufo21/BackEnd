@@ -1,3 +1,4 @@
+using System.Data;
 using Ecommerce.Application.Contracts.Lineas;
 using Ecommerce.Domain;
 using Microsoft.AspNetCore.Builder;
@@ -18,10 +19,13 @@ public class LineaRepository : ILinea
 
     public bool Eliminar(int id)
     {
-        const string sql = "DELETE FROM Sublinea WHERE IdSubLinea = @Id";
+        const string sql = "uspEliminarCategoria";
         using var con = new SqlConnection(_connectionString);
         using var cmd = new SqlCommand(sql, con);
+        cmd.CommandTimeout = 300;
+        cmd.CommandType = CommandType.StoredProcedure;
         cmd.Parameters.AddWithValue("@Id", id);
+        if (con.State == ConnectionState.Open) con.Close();
         con.Open();
         var rows = cmd.ExecuteNonQuery();
         return rows > 0;
@@ -34,6 +38,7 @@ public class LineaRepository : ILinea
         using var cmd = new SqlCommand(sql, con);
         cmd.Parameters.AddWithValue("@Nombre", linea.NombreSublinea ?? string.Empty);
         cmd.Parameters.AddWithValue("@Codigo", linea.CodigoSunat ?? string.Empty);
+        if (con.State == ConnectionState.Open) con.Close();
         con.Open();
         var rows = cmd.ExecuteNonQuery();
         return rows > 0;
@@ -47,20 +52,19 @@ public class LineaRepository : ILinea
         cmd.Parameters.AddWithValue("@Id", id);
         cmd.Parameters.AddWithValue("@Nombre", linea.NombreSublinea ?? string.Empty);
         cmd.Parameters.AddWithValue("@Codigo", linea.CodigoSunat ?? string.Empty);
+        if (con.State == ConnectionState.Open) con.Close();
         con.Open();
         var rows = cmd.ExecuteNonQuery();
         return rows > 0;
     }
-
-
-
     public IReadOnlyList<EGeneral> Listar()
     {
         var lista = new List<EGeneral>();
-        const string sql = "SELECT IdSubLinea, NombreSublinea, CodigoSunat FROM Sublinea";
+        const string sql = "SELECT IdSubLinea, NombreSublinea, CodigoSunat FROM Sublinea order by NombreSublinea asc";
 
         using var con = new SqlConnection(_connectionString);
         using var cmd = new SqlCommand(sql, con);
+        if (con.State == ConnectionState.Open) con.Close();
         con.Open();
         using var reader = cmd.ExecuteReader();
         while (reader.Read())

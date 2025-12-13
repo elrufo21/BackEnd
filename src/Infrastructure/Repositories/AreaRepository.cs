@@ -1,3 +1,4 @@
+using System.Data;
 using Ecommerce.Application.Contracts.Areas;
 using Ecommerce.Domain;
 using Microsoft.AspNetCore.Builder;
@@ -22,6 +23,7 @@ public class AreaRepository : IArea
         using var con = new SqlConnection(_connectionString);
         using var cmd = new SqlCommand(sql, con);
         cmd.Parameters.AddWithValue("@Nombre", area.AreaNombre ?? string.Empty);
+        if (con.State == ConnectionState.Open) con.Close();
         con.Open();
         var rows = cmd.ExecuteNonQuery();
         return rows > 0;
@@ -34,6 +36,7 @@ public class AreaRepository : IArea
         using var cmd = new SqlCommand(sql, con);
         cmd.Parameters.AddWithValue("@Id", id);
         cmd.Parameters.AddWithValue("@Nombre", area.AreaNombre ?? string.Empty);
+        if (con.State == ConnectionState.Open) con.Close();
         con.Open();
         var rows = cmd.ExecuteNonQuery();
         return rows > 0;
@@ -41,10 +44,13 @@ public class AreaRepository : IArea
 
     public bool Eliminar(int id)
     {
-        const string sql = "DELETE FROM Area WHERE AreaId = @Id";
+        const string sql = "uspEliminarArea";
         using var con = new SqlConnection(_connectionString);
         using var cmd = new SqlCommand(sql, con);
+        cmd.CommandTimeout = 300;
+        cmd.CommandType = CommandType.StoredProcedure;
         cmd.Parameters.AddWithValue("@Id", id);
+        if (con.State == ConnectionState.Open) con.Close();
         con.Open();
         var rows = cmd.ExecuteNonQuery();
         return rows > 0;
@@ -53,10 +59,11 @@ public class AreaRepository : IArea
     public IReadOnlyList<EGeneral> Listar()
     {
         var lista = new List<EGeneral>();
-        const string sql = "SELECT AreaId, AreaNombre FROM Area";
+        const string sql = "SELECT AreaId, AreaNombre FROM Area order by 1 asc";
 
         using var con = new SqlConnection(_connectionString);
         using var cmd = new SqlCommand(sql, con);
+        if (con.State == ConnectionState.Open) con.Close();
         con.Open();
         using var reader = cmd.ExecuteReader();
         while (reader.Read())
