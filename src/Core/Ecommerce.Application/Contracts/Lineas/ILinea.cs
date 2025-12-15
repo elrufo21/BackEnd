@@ -3,7 +3,7 @@ namespace Ecommerce.Application.Contracts.Lineas;
 
 public interface ILinea
 {
-    public bool Insertar(Linea linea);
+    public string Insertar(Linea linea);
     public bool Editar(int id, Linea linea);
     public bool Eliminar(int id);
     public IReadOnlyList<EGeneral> Listar();

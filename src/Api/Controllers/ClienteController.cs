@@ -23,15 +23,7 @@ public class ClienteController: ControllerBase
     {
         return Ok(_mediator.Insertar(cliente));
     }
-
-    [AllowAnonymous]
-    [HttpPut("{id}", Name = "EditarCliente")]
-    [ProducesResponseType((int)HttpStatusCode.OK)]
-    public IActionResult EditarCliente(long id, [FromBody] Cliente cliente)
-    {
-        return Ok(_mediator.Editar(id, cliente));
-    }
-
+    
     [AllowAnonymous]
     [HttpDelete("{id}", Name = "EliminarCliente")]
     [ProducesResponseType((int)HttpStatusCode.OK)]

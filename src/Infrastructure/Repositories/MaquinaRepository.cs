@@ -20,11 +20,10 @@ public class MaquinaRepository : IMaquina
     public bool Insertar(Maquina maquina)
     {
         const string sql = @"INSERT INTO MAQUINAS (Maquina, Registro, SerieFactura, SerieNC, SerieBoleta, Tiketera)
-                             VALUES (@Maquina, @Registro, @SerieFactura, @SerieNC, @SerieBoleta, @Tiketera)";
+                             VALUES (@Maquina,getdate(), @SerieFactura, @SerieNC, @SerieBoleta, @Tiketera)";
         using var con = new SqlConnection(_connectionString);
         using var cmd = new SqlCommand(sql, con);
         cmd.Parameters.AddWithValue("@Maquina", maquina.NombreMaquina ?? string.Empty);
-        cmd.Parameters.AddWithValue("@Registro", maquina.Registro ?? string.Empty);
         cmd.Parameters.AddWithValue("@SerieFactura", maquina.SerieFactura ?? string.Empty);
         cmd.Parameters.AddWithValue("@SerieNC", maquina.SerieNC ?? string.Empty);
         cmd.Parameters.AddWithValue("@SerieBoleta", maquina.SerieBoleta ?? string.Empty);
@@ -39,7 +38,7 @@ public class MaquinaRepository : IMaquina
     {
         const string sql = @"UPDATE MAQUINAS
                              SET Maquina = @Maquina,
-                                 Registro = @Registro,
+                                 Registro = getdate(),
                                  SerieFactura = @SerieFactura,
                                  SerieNC = @SerieNC,
                                  SerieBoleta = @SerieBoleta,
@@ -49,7 +48,6 @@ public class MaquinaRepository : IMaquina
         using var cmd = new SqlCommand(sql, con);
         cmd.Parameters.AddWithValue("@Id", id);
         cmd.Parameters.AddWithValue("@Maquina", maquina.NombreMaquina ?? string.Empty);
-        cmd.Parameters.AddWithValue("@Registro", maquina.Registro ?? string.Empty);
         cmd.Parameters.AddWithValue("@SerieFactura", maquina.SerieFactura ?? string.Empty);
         cmd.Parameters.AddWithValue("@SerieNC", maquina.SerieNC ?? string.Empty);
         cmd.Parameters.AddWithValue("@SerieBoleta", maquina.SerieBoleta ?? string.Empty);
@@ -75,9 +73,10 @@ public class MaquinaRepository : IMaquina
     public IReadOnlyList<Maquina> Listar()
     {
         var lista = new List<Maquina>();
-        const string sql = @"SELECT IdMaquina, Maquina, Registro, SerieFactura, SerieNC, SerieBoleta, Tiketera
-                             FROM MAQUINAS";
-
+        const string sql = @"SELECT IdMaquina, Maquina, Registro, 
+                             convert(varchar,SerieFactura,103)+' '+SUBSTRING(convert(varchar,SerieFactura,114),1,8) as SerieFactura, 
+                             SerieNC, SerieBoleta, Tiketera
+                             FROM MAQUINAS order by 1 asc";
         using var con = new SqlConnection(_connectionString);
         using var cmd = new SqlCommand(sql, con);
         if (con.State == ConnectionState.Open) con.Close();

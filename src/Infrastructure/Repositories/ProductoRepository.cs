@@ -118,11 +118,11 @@ WHERE IdProducto = @Id;";
 
     public bool Eliminar(long id)
     {
-        const string sql = "DELETE FROM Producto WHERE IdProducto = @Id;";
+        const string sql = "uspEliminarProducto";
         using var con = new SqlConnection(_connectionString);
         using var cmd = new SqlCommand(sql, con);
         cmd.CommandTimeout = 300;
-        cmd.CommandType = CommandType.Text;
+        cmd.CommandType = CommandType.StoredProcedure;
         cmd.Parameters.AddWithValue("@Id", id);
         if (con.State == ConnectionState.Open) con.Close();
         con.Open();

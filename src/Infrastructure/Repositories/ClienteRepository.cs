@@ -25,28 +25,13 @@ public class ClienteRepository : ICliente
         using var cmd = new SqlCommand(sql, con);
         cmd.CommandTimeout = 300;
         cmd.CommandType = CommandType.StoredProcedure;
-        cmd.Parameters.AddWithValue("@Id",0);
         AddParameters(cmd, cliente);
         if (con.State == ConnectionState.Open) con.Close();
         con.Open();
         var rows = cmd.ExecuteNonQuery();
         return rows > 0;
     }
-    public bool Editar(long id, Cliente cliente)
-    {
-        const string sql = "uspInsertarCliente";
-        using var con = new SqlConnection(_connectionString);
-        using var cmd = new SqlCommand(sql, con);
-        cmd.CommandTimeout = 300;
-        cmd.CommandType = CommandType.StoredProcedure;
-        cmd.Parameters.AddWithValue("@Id", id);
-        AddParameters(cmd, cliente);
-        if (con.State == ConnectionState.Open) con.Close();
-        con.Open();
-        var rows = cmd.ExecuteNonQuery();
-        return rows > 0;
-    }
-
+    
     public bool Eliminar(long id)
     {
         const string sql = "uspEliminarCliente";
@@ -101,6 +86,7 @@ public class ClienteRepository : ICliente
 
     private static void AddParameters(SqlCommand cmd, Cliente cliente)
     {
+        cmd.Parameters.AddWithValue("@Id", (object?)cliente.ClienteId ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@ClienteRazon", (object?)cliente.ClienteRazon ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@ClienteRuc", (object?)cliente.ClienteRuc ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@ClienteDni", (object?)cliente.ClienteDni ?? DBNull.Value);
@@ -110,6 +96,5 @@ public class ClienteRepository : ICliente
         cmd.Parameters.AddWithValue("@ClienteEstado", (object?)cliente.ClienteEstado ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@ClienteDespacho", (object?)cliente.ClienteDespacho ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@ClienteUsuario", (object?)cliente.ClienteUsuario ?? DBNull.Value);
-        //cmd.Parameters.Add("@ClienteFecha", SqlDbType.DateTime).Value = (object?)cliente.ClienteFecha ?? DBNull.Value;
     }
 }
