@@ -14,6 +14,7 @@ using Ecommerce.Application.Contracts.Companias;
 using Ecommerce.Application.Contracts.TemporalVenta;
 using Ecommerce.Application.Contracts.Usuarios;
 using Ecommerce.Application.Contracts.Clientes;
+using Ecommerce.Application.Contracts.Proveedores;
 using Ecommerce.Application.Features.Products.Queries.GetProductList;
 using Ecommerce.Domain;
 using Ecommerce.Infrastructure.ImageCloudinary;
@@ -53,6 +54,7 @@ builder.Services.AddTransient<ITemporalVenta, TemporalVentaRepository>();
 builder.Services.AddTransient<INotaPedido, NotaPedidoRepository>();
 builder.Services.AddTransient<ICliente, ClienteRepository>();
 builder.Services.AddTransient<ICompania, CompaniaRepository>();
+builder.Services.AddTransient<IProveedor, ProveedorRepository>();
 
 // Add services to the container.
 
