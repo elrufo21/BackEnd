@@ -4,8 +4,7 @@ namespace Ecommerce.Application.Contracts.Maquinas;
 
 public interface IMaquina
 {
-    bool Insertar(Maquina maquina);
-    bool Editar(int id, Maquina maquina);
+    string Insertar(Maquina maquina);
     bool Eliminar(int id);
     IReadOnlyList<Maquina> Listar();
 }

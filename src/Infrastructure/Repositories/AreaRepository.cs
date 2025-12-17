@@ -10,6 +10,7 @@ namespace Ecommerce.Infrastructure.Persistence.Repositories;
 public class AreaRepository : IArea
 {
     private readonly string _connectionString;
+    AccesoDatos daSQL = new AccesoDatos();
 
     public AreaRepository()
     {
@@ -17,31 +18,16 @@ public class AreaRepository : IArea
         _connectionString = builder.Configuration.GetConnectionString("DefaultConnection")!;
     }
 
-    public bool Insertar(Area area)
+    public string Insertar(Area area)
     {
-        const string sql = "INSERT INTO Area (AreaNombre) VALUES (@Nombre)";
-        using var con = new SqlConnection(_connectionString);
-        using var cmd = new SqlCommand(sql, con);
-        cmd.Parameters.AddWithValue("@Nombre", area.AreaNombre ?? string.Empty);
-        if (con.State == ConnectionState.Open) con.Close();
-        con.Open();
-        var rows = cmd.ExecuteNonQuery();
-        return rows > 0;
+        string rpt = string.Empty;
+        string xvalue=string.Empty;
+        xvalue=area.AreaId+"|"+area.AreaNombre;
+        rpt = daSQL.ejecutarComando("uspInsertarArea", "@Data",xvalue);
+        if (string.IsNullOrEmpty(rpt)) rpt = "error";
+        return rpt;
     }
-
-    public bool Editar(int id, Area area)
-    {
-        const string sql = "UPDATE Area SET AreaNombre = @Nombre WHERE AreaId = @Id";
-        using var con = new SqlConnection(_connectionString);
-        using var cmd = new SqlCommand(sql, con);
-        cmd.Parameters.AddWithValue("@Id", id);
-        cmd.Parameters.AddWithValue("@Nombre", area.AreaNombre ?? string.Empty);
-        if (con.State == ConnectionState.Open) con.Close();
-        con.Open();
-        var rows = cmd.ExecuteNonQuery();
-        return rows > 0;
-    }
-
+    
     public bool Eliminar(int id)
     {
         const string sql = "uspEliminarArea";

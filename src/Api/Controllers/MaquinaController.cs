@@ -24,15 +24,7 @@ public class MaquinaController : ControllerBase
     {
         return Ok(_mediator.Insertar(maquina));
     }
-
-    [AllowAnonymous]
-    [HttpPut("{id}", Name = "EditarMaquina")]
-    [ProducesResponseType((int)HttpStatusCode.OK)]
-    public IActionResult EditarMaquina(int id, [FromBody] Maquina maquina)
-    {
-        return Ok(_mediator.Editar(id, maquina));
-    }
-
+    
     [AllowAnonymous]
     [HttpDelete("{id}", Name = "EliminarMaquina")]
     [ProducesResponseType((int)HttpStatusCode.OK)]

@@ -26,14 +26,6 @@ public class AreaController : ControllerBase
     }
 
     [AllowAnonymous]
-    [HttpPut("{id}", Name = "EditarArea")]
-    [ProducesResponseType((int)HttpStatusCode.OK)]
-    public IActionResult EditarArea(int id, [FromBody] Area area)
-    {
-        return Ok(_mediator.Editar(id, area));
-    }
-
-    [AllowAnonymous]
     [HttpDelete("{id}", Name = "EliminarArea")]
     [ProducesResponseType((int)HttpStatusCode.OK)]
     public IActionResult EliminarArea(int id)

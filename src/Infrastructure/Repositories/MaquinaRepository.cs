@@ -10,6 +10,7 @@ namespace Ecommerce.Infrastructure.Persistence.Repositories;
 public class MaquinaRepository : IMaquina
 {
     private readonly string _connectionString;
+    AccesoDatos daSQL = new AccesoDatos();
 
     public MaquinaRepository()
     {
@@ -17,47 +18,17 @@ public class MaquinaRepository : IMaquina
         _connectionString = builder.Configuration.GetConnectionString("DefaultConnection")!;
     }
 
-    public bool Insertar(Maquina maquina)
+    public string Insertar(Maquina maquina)
     {
-        const string sql = @"INSERT INTO MAQUINAS (Maquina, Registro, SerieFactura, SerieNC, SerieBoleta, Tiketera)
-                             VALUES (@Maquina,getdate(), @SerieFactura, @SerieNC, @SerieBoleta, @Tiketera)";
-        using var con = new SqlConnection(_connectionString);
-        using var cmd = new SqlCommand(sql, con);
-        cmd.Parameters.AddWithValue("@Maquina", maquina.NombreMaquina ?? string.Empty);
-        cmd.Parameters.AddWithValue("@SerieFactura", maquina.SerieFactura ?? string.Empty);
-        cmd.Parameters.AddWithValue("@SerieNC", maquina.SerieNC ?? string.Empty);
-        cmd.Parameters.AddWithValue("@SerieBoleta", maquina.SerieBoleta ?? string.Empty);
-        cmd.Parameters.AddWithValue("@Tiketera", maquina.Tiketera ?? string.Empty);
-        if (con.State == ConnectionState.Open) con.Close();
-        con.Open();
-        var rows = cmd.ExecuteNonQuery();
-        return rows > 0;
+        string rpt = string.Empty;
+        string xvalue = string.Empty;
+        xvalue = maquina.IdMaquina + "|" + maquina.NombreMaquina + "|" + maquina.SerieFactura + "|" +
+        maquina.SerieNC + "|" + maquina.SerieBoleta + "|" + maquina.Tiketera;
+        rpt = daSQL.ejecutarComando("uspInsertarMaquina", "@Data", xvalue);
+        if (string.IsNullOrEmpty(rpt)) rpt = "error";
+        return rpt;
     }
-
-    public bool Editar(int id, Maquina maquina)
-    {
-        const string sql = @"UPDATE MAQUINAS
-                             SET Maquina = @Maquina,
-                                 Registro = getdate(),
-                                 SerieFactura = @SerieFactura,
-                                 SerieNC = @SerieNC,
-                                 SerieBoleta = @SerieBoleta,
-                                 Tiketera = @Tiketera
-                             WHERE IdMaquina = @Id";
-        using var con = new SqlConnection(_connectionString);
-        using var cmd = new SqlCommand(sql, con);
-        cmd.Parameters.AddWithValue("@Id", id);
-        cmd.Parameters.AddWithValue("@Maquina", maquina.NombreMaquina ?? string.Empty);
-        cmd.Parameters.AddWithValue("@SerieFactura", maquina.SerieFactura ?? string.Empty);
-        cmd.Parameters.AddWithValue("@SerieNC", maquina.SerieNC ?? string.Empty);
-        cmd.Parameters.AddWithValue("@SerieBoleta", maquina.SerieBoleta ?? string.Empty);
-        cmd.Parameters.AddWithValue("@Tiketera", maquina.Tiketera ?? string.Empty);
-        if (con.State == ConnectionState.Open) con.Close();
-        con.Open();
-        var rows = cmd.ExecuteNonQuery();
-        return rows > 0;
-    }
-
+    
     public bool Eliminar(int id)
     {
         const string sql = "DELETE FROM MAQUINAS WHERE IdMaquina = @Id";
@@ -73,12 +44,11 @@ public class MaquinaRepository : IMaquina
     public IReadOnlyList<Maquina> Listar()
     {
         var lista = new List<Maquina>();
-        const string sql = @"SELECT IdMaquina, Maquina, Registro, 
-                             convert(varchar,SerieFactura,103)+' '+SUBSTRING(convert(varchar,SerieFactura,114),1,8) as SerieFactura, 
-                             SerieNC, SerieBoleta, Tiketera
-                             FROM MAQUINAS order by 1 asc";
+        const string sql = "uspListarMaquinas";
         using var con = new SqlConnection(_connectionString);
         using var cmd = new SqlCommand(sql, con);
+        cmd.CommandTimeout = 300;
+        cmd.CommandType = CommandType.StoredProcedure;
         if (con.State == ConnectionState.Open) con.Close();
         con.Open();
         using var reader = cmd.ExecuteReader();
