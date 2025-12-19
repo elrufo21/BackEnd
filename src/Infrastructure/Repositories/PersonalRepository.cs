@@ -11,37 +11,24 @@ namespace Ecommerce.Infrastructure.Persistence.Repositories;
 public class PersonalRepository : IPersonal
 {
     private readonly string _connectionString;
+    AccesoDatos daSQL = new AccesoDatos();
     public PersonalRepository()
     {
         var builder = WebApplication.CreateBuilder();
         _connectionString = builder.Configuration.GetConnectionString("DefaultConnection")!;
     }
-    public bool Insertar(Personal personal)
+    public string Insertar(Personal personal)
     {
-        const string sql = "ingresarPersonal";
-        using var con = new SqlConnection(_connectionString);
-        using var cmd = new SqlCommand(sql, con);
-        cmd.CommandTimeout = 300;
-        cmd.CommandType = CommandType.StoredProcedure;
-        AddParameters(cmd, personal);
-        if (con.State == ConnectionState.Open) con.Close();
-        con.Open();
-        var rows = cmd.ExecuteNonQuery();
-        return rows > 0;
-    }
-    public bool Editar(long id, Personal personal)
-    {
-        const string sql = "editarPersonal";
-        using var con = new SqlConnection(_connectionString);
-        using var cmd = new SqlCommand(sql, con);
-        cmd.CommandTimeout = 300;
-        cmd.CommandType = CommandType.StoredProcedure;
-        cmd.Parameters.AddWithValue("@Id", id);
-        AddParameters(cmd, personal);
-        if (con.State == ConnectionState.Open) con.Close();
-        con.Open();
-        var rows = cmd.ExecuteNonQuery();
-        return rows > 0;
+        string rpt = string.Empty;
+        string xvalue = string.Empty;
+        xvalue = personal.PersonalId + "|" + personal.PersonalNombres + "|" +
+        personal.PersonalApellidos + "|" + personal.AreaId + "|" + personal.PersonalCodigo + "|" +
+        personal.PersonalNacimiento?.Date.ToString("MM-dd-yyyy") + "|" + personal.PersonalIngreso?.Date.ToString("MM-dd-yyyy") + "|" +
+        personal.PersonalDNI + "|" + personal.PersonalDireccion + "|" + personal.PersonalTelefono + "|" + personal.PersonalEmail + "|" +
+        personal.PersonalEstado + "|" + personal.PersonalImagen + "|" + personal.CompaniaId;
+        rpt = daSQL.ejecutarComando("uspIngresarPersonal", "@Data", xvalue);
+        if (string.IsNullOrEmpty(rpt)) rpt = "error";
+        return rpt;
     }
     public bool Eliminar(long id)
     {
@@ -77,7 +64,7 @@ public class PersonalRepository : IPersonal
                 AreaId = reader["AreaId"] == DBNull.Value ? null : Convert.ToInt64(reader["AreaId"]),
                 PersonalCodigo = reader["PersonalCodigo"].ToString(),
                 PersonalNacimiento = ReadNullableDate(reader, "PersonalNacimiento"),
-                PersonalIngreso = reader["PersonalIngreso"].ToString(),
+                PersonalIngreso = ReadNullableDate(reader, "PersonalIngreso"),
                 PersonalDNI = reader["PersonalDNI"].ToString(),
                 PersonalDireccion = reader["PersonalDireccion"].ToString(),
                 PersonalTelefono = reader["PersonalTelefono"].ToString(),
@@ -89,23 +76,6 @@ public class PersonalRepository : IPersonal
         }
         return lista;
     }
-    private static void AddParameters(SqlCommand cmd, Personal personal)
-    {
-        cmd.Parameters.AddWithValue("@PersonalNombres", (object?)personal.PersonalNombres ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("@PersonalApellidos", (object?)personal.PersonalApellidos ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("@AreaId", (object?)personal.AreaId ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("@PersonalCodigo", (object?)personal.PersonalCodigo ?? DBNull.Value);
-        cmd.Parameters.Add("@PersonalNacimiento", SqlDbType.Date).Value = personal.PersonalNacimiento?.Date ?? (object)DBNull.Value;
-        cmd.Parameters.AddWithValue("@PersonalIngreso", (object?)personal.PersonalIngreso ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("@PersonalDNI", (object?)personal.PersonalDNI ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("@PersonalDireccion", (object?)personal.PersonalDireccion ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("@PersonalTelefono", (object?)personal.PersonalTelefono ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("@PersonalEmail", (object?)personal.PersonalEmail ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("@PersonalEstado", (object?)personal.PersonalEstado ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("@PersonalImagen", (object?)personal.PersonalImagen ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("@CompaniaId", (object?)personal.CompaniaId ?? DBNull.Value);
-    }
-
     private static DateTime? ReadNullableDate(SqlDataReader reader, string columnName)
     {
         if (reader[columnName] == DBNull.Value) return null;

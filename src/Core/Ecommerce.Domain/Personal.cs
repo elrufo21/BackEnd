@@ -8,7 +8,7 @@ public class Personal
     public long? AreaId { get; set; }
     public string? PersonalCodigo { get; set; }
     public DateTime? PersonalNacimiento { get; set; }
-    public string? PersonalIngreso { get; set; }
+    public DateTime? PersonalIngreso { get; set; }
     public string? PersonalDNI { get; set; }
     public string? PersonalDireccion { get; set; }
     public string? PersonalTelefono { get; set; }

@@ -26,14 +26,6 @@ public class PersonalController : ControllerBase
     }
 
     [AllowAnonymous]
-    [HttpPut("{id}", Name = "EditarPersonal")]
-    [ProducesResponseType((int)HttpStatusCode.OK)]
-    public IActionResult EditarPersonal(long id, [FromBody] Personal personal)
-    {
-        return Ok(_mediator.Editar(id, personal));
-    }
-
-    [AllowAnonymous]
     [HttpDelete("{id}", Name = "EliminarPersonal")]
     [ProducesResponseType((int)HttpStatusCode.OK)]
     public IActionResult EliminarPersonal(long id)

@@ -4,8 +4,7 @@ namespace Ecommerce.Application.Contracts.Personales;
 
 public interface IPersonal
 {
-    bool Insertar(Personal personal);
-    bool Editar(long id, Personal personal);
+    string Insertar(Personal personal);
     bool Eliminar(long id);
     IReadOnlyList<Personal> Listar();
 }
