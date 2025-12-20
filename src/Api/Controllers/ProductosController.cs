@@ -25,15 +25,7 @@ public class ProductosController : ControllerBase
     {
         return Ok(_mediator.Insertar(producto));
     }
-
-    [AllowAnonymous]
-    [HttpPut("{id:long}", Name = "EditarProducto")]
-    [ProducesResponseType((int)HttpStatusCode.OK)]
-    public IActionResult EditarProducto(long id, [FromBody] Producto producto)
-    {
-        return Ok(_mediator.Editar(id, producto));
-    }
-
+    
     [AllowAnonymous]
     [HttpDelete("{id:long}", Name = "EliminarProducto")]
     [ProducesResponseType((int)HttpStatusCode.OK)]

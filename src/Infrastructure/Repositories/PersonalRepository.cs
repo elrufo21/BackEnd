@@ -90,7 +90,7 @@ public class PersonalRepository : IPersonal
         if (string.IsNullOrWhiteSpace(value)) return null;
 
         // First try ISO date (yyyy-MM-dd)
-        if (DateTime.TryParseExact(value, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var exact))
+        if (DateTime.TryParseExact(value, "dd/MM/yyyy", CultureInfo.InvariantCulture, DateTimeStyles.None, out var exact))
         {
             return exact;
         }
