@@ -6,4 +6,5 @@ public interface IManageImageService
 {
 
     Task<ImageResponse> UploadImage(ImageData imageStream);
+    Task DeleteImage(string? publicIdOrUrl);
 }
