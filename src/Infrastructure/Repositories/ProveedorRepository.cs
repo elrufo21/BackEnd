@@ -10,69 +10,26 @@ namespace Ecommerce.Infrastructure.Persistence.Repositories;
 public class ProveedorRepository : IProveedor
 {
     private readonly string _connectionString;
-
+    AccesoDatos daSQL = new AccesoDatos();
     public ProveedorRepository()
     {
         var builder = WebApplication.CreateBuilder();
         _connectionString = builder.Configuration.GetConnectionString("DefaultConnection")!;
     }
 
-    public bool Insertar(Proveedor proveedor)
+    public string Insertar(Proveedor proveedor)
     {
-        const string sql = @"
-INSERT INTO Proveedor (
-    ProveedorRazon,
-    ProveedorRuc,
-    ProveedorContacto,
-    ProveedorCelular,
-    ProveedorTelefono,
-    ProveedorCorreo,
-    ProveedorDireccion,
-    ProveedorEstado
-) VALUES (
-    @ProveedorRazon,
-    @ProveedorRuc,
-    @ProveedorContacto,
-    @ProveedorCelular,
-    @ProveedorTelefono,
-    @ProveedorCorreo,
-    @ProveedorDireccion,
-    @ProveedorEstado
-);";
-        using var con = new SqlConnection(_connectionString);
-        using var cmd = new SqlCommand(sql, con);
-        cmd.CommandTimeout = 300;
-        cmd.CommandType = CommandType.Text;
-        AddParameters(cmd, proveedor);
-        if (con.State == ConnectionState.Open) con.Close();
-        con.Open();
-        return cmd.ExecuteNonQuery() > 0;
+        string rpt = string.Empty;
+        string xvalue = string.Empty;
+        xvalue = proveedor.ProveedorId + "|" + proveedor.ProveedorRazon?.Trim() + "|" +
+        proveedor.ProveedorRuc?.Trim() + "|" + proveedor.ProveedorContacto?.Trim() + "|" + 
+        proveedor.ProveedorCelular?.Trim() + "|" +proveedor.ProveedorTelefono+ "|" +
+        proveedor.ProveedorCorreo?.Trim()+ "|" +proveedor.ProveedorDireccion+ "|" +
+        proveedor.ProveedorEstado;
+        rpt = daSQL.ejecutarComando("uspInsertarProducto", "@Data", xvalue);
+        if (string.IsNullOrEmpty(rpt)) rpt = "error";
+        return rpt;
     }
-
-    public bool Editar(long id, Proveedor proveedor)
-    {
-        const string sql = @"
-UPDATE Proveedor SET
-    ProveedorRazon = @ProveedorRazon,
-    ProveedorRuc = @ProveedorRuc,
-    ProveedorContacto = @ProveedorContacto,
-    ProveedorCelular = @ProveedorCelular,
-    ProveedorTelefono = @ProveedorTelefono,
-    ProveedorCorreo = @ProveedorCorreo,
-    ProveedorDireccion = @ProveedorDireccion,
-    ProveedorEstado = @ProveedorEstado
-WHERE ProveedorId = @Id;";
-        using var con = new SqlConnection(_connectionString);
-        using var cmd = new SqlCommand(sql, con);
-        cmd.CommandTimeout = 300;
-        cmd.CommandType = CommandType.Text;
-        cmd.Parameters.AddWithValue("@Id", id);
-        AddParameters(cmd, proveedor);
-        if (con.State == ConnectionState.Open) con.Close();
-        con.Open();
-        return cmd.ExecuteNonQuery() > 0;
-    }
-
     public bool Eliminar(long id)
     {
         const string sql = "DELETE FROM Proveedor WHERE ProveedorId = @Id;";

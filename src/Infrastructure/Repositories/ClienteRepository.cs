@@ -10,7 +10,7 @@ namespace Ecommerce.Infrastructure.Persistence.Repositories;
 public class ClienteRepository : ICliente
 {
     private readonly string _connectionString;
-    private readonly AccesoDatos _accesoDatos = new();
+    AccesoDatos daSQL = new AccesoDatos();
 
     public ClienteRepository()
     {
@@ -18,20 +18,20 @@ public class ClienteRepository : ICliente
         _connectionString = builder.Configuration.GetConnectionString("DefaultConnection")!;
     }
 
-    public bool Insertar(Cliente cliente)
+    public string Insertar(Cliente cliente)
     {
-        const string sql = "uspInsertarCliente";
-        using var con = new SqlConnection(_connectionString);
-        using var cmd = new SqlCommand(sql, con);
-        cmd.CommandTimeout = 300;
-        cmd.CommandType = CommandType.StoredProcedure;
-        AddParameters(cmd, cliente);
-        if (con.State == ConnectionState.Open) con.Close();
-        con.Open();
-        var rows = cmd.ExecuteNonQuery();
-        return rows > 0;
+        string rpt = string.Empty;
+        string xvalue = string.Empty;
+        xvalue = cliente.ClienteId + "|" + cliente.ClienteRazon?.Trim() + "|" +
+        cliente.ClienteRuc?.Trim() + "|" + cliente.ClienteDni?.Trim() + "|" + 
+        cliente.ClienteDireccion?.Trim() + "|" +cliente.ClienteTelefono+ "|" +
+        cliente.ClienteCorreo?.Trim()+ "|" +cliente.ClienteEstado+ "|" +
+        cliente.ClienteDespacho?.Trim()+ "|" +cliente.ClienteUsuario;
+        rpt = daSQL.ejecutarComando("uspInsertarCliente", "@Data", xvalue);
+        if (string.IsNullOrEmpty(rpt)) rpt = "error";
+        return rpt;
     }
-    
+       
     public bool Eliminar(long id)
     {
         const string sql = "uspEliminarCliente";
@@ -49,7 +49,7 @@ public class ClienteRepository : ICliente
     public IReadOnlyList<Cliente> Listar()
     {
         var lista = new List<Cliente>();
-        const string sql = "usppListarClientes";
+        const string sql = "uspListarClientes";
         using var con = new SqlConnection(_connectionString);
         using var cmd = new SqlCommand(sql, con);
         cmd.CommandTimeout = 300;
@@ -80,7 +80,7 @@ public class ClienteRepository : ICliente
 
     public string ListarCombo()
     {
-        var rpt = _accesoDatos.ejecutarComando("uspListaComboClienteWeb");
+        var rpt =daSQL.ejecutarComando("uspListaComboClienteWeb");
         return string.IsNullOrWhiteSpace(rpt) ? string.Empty : rpt;
     }
 

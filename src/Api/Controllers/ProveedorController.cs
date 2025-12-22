@@ -24,15 +24,7 @@ public class ProveedorController : ControllerBase
     {
         return Ok(_mediator.Insertar(proveedor));
     }
-
-    [AllowAnonymous]
-    [HttpPut("{id:long}", Name = "EditarProveedor")]
-    [ProducesResponseType((int)HttpStatusCode.OK)]
-    public IActionResult EditarProveedor(long id, [FromBody] Proveedor proveedor)
-    {
-        return Ok(_mediator.Editar(id, proveedor));
-    }
-
+    
     [AllowAnonymous]
     [HttpDelete("{id:long}", Name = "EliminarProveedor")]
     [ProducesResponseType((int)HttpStatusCode.OK)]
