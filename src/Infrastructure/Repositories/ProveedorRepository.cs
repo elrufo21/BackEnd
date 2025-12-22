@@ -30,6 +30,31 @@ public class ProveedorRepository : IProveedor
         if (string.IsNullOrEmpty(rpt)) rpt = "error";
         return rpt;
     }
+
+    public bool Actualizar(Proveedor proveedor)
+    {
+        const string sql = @"
+UPDATE Proveedor
+SET ProveedorRazon = @ProveedorRazon,
+    ProveedorRuc = @ProveedorRuc,
+    ProveedorContacto = @ProveedorContacto,
+    ProveedorCelular = @ProveedorCelular,
+    ProveedorTelefono = @ProveedorTelefono,
+    ProveedorCorreo = @ProveedorCorreo,
+    ProveedorDireccion = @ProveedorDireccion,
+    ProveedorEstado = @ProveedorEstado
+WHERE ProveedorId = @ProveedorId;";
+
+        using var con = new SqlConnection(_connectionString);
+        using var cmd = new SqlCommand(sql, con);
+        cmd.CommandTimeout = 300;
+        cmd.CommandType = CommandType.Text;
+        cmd.Parameters.AddWithValue("@ProveedorId", proveedor.ProveedorId);
+        AddParameters(cmd, proveedor);
+        if (con.State == ConnectionState.Open) con.Close();
+        con.Open();
+        return cmd.ExecuteNonQuery() > 0;
+    }
     public bool Eliminar(long id)
     {
         const string sql = "DELETE FROM Proveedor WHERE ProveedorId = @Id;";

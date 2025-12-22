@@ -55,6 +55,7 @@ builder.Services.AddTransient<INotaPedido, NotaPedidoRepository>();
 builder.Services.AddTransient<ICliente, ClienteRepository>();
 builder.Services.AddTransient<ICompania, CompaniaRepository>();
 builder.Services.AddTransient<IProveedor, ProveedorRepository>();
+builder.Services.AddTransient<ICuentaProveedor, CuentaProveedorRepository>();
 
 // Add services to the container.
 

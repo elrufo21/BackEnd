@@ -11,10 +11,12 @@ namespace Ecommerce.Api.Controllers;
 public class ProveedorController : ControllerBase
 {
     private readonly IProveedor _mediator;
+    private readonly ICuentaProveedor _cuentaProveedor;
 
-    public ProveedorController(IProveedor mediator)
+    public ProveedorController(IProveedor mediator, ICuentaProveedor cuentaProveedor)
     {
         _mediator = mediator;
+        _cuentaProveedor = cuentaProveedor;
     }
 
     [AllowAnonymous]
@@ -23,6 +25,17 @@ public class ProveedorController : ControllerBase
     public IActionResult RegisterProveedor([FromBody] Proveedor proveedor)
     {
         return Ok(_mediator.Insertar(proveedor));
+    }
+
+    [AllowAnonymous]
+    [HttpPut("{id:long}", Name = "ActualizarProveedor")]
+    [ProducesResponseType((int)HttpStatusCode.OK)]
+    public IActionResult ActualizarProveedor(long id, [FromBody] Proveedor proveedor)
+    {
+        proveedor.ProveedorId = id;
+        var ok = _mediator.Actualizar(proveedor);
+        if (!ok) return NotFound();
+        return Ok(ok);
     }
     
     [AllowAnonymous]
@@ -49,5 +62,45 @@ public class ProveedorController : ControllerBase
         var proveedor = _mediator.ObtenerPorId(id);
         if (proveedor is null) return NotFound();
         return Ok(proveedor);
+    }
+
+    [AllowAnonymous]
+    [HttpPost("{proveedorId:long}/cuentas", Name = "CrearCuentaProveedor")]
+    [ProducesResponseType(typeof(long), (int)HttpStatusCode.OK)]
+    public ActionResult<long> CrearCuentaProveedor(long proveedorId, [FromBody] CuentaProveedor cuenta)
+    {
+        cuenta.ProveedorId = proveedorId;
+        var id = _cuentaProveedor.Insertar(cuenta);
+        if (id == 0) return BadRequest("No se pudo crear la cuenta.");
+        return Ok(id);
+    }
+
+    [AllowAnonymous]
+    [HttpGet("{proveedorId:long}/cuentas", Name = "ListarCuentasProveedor")]
+    [ProducesResponseType(typeof(IReadOnlyList<CuentaProveedor>), (int)HttpStatusCode.OK)]
+    public ActionResult<IReadOnlyList<CuentaProveedor>> ListarCuentasProveedor(long proveedorId)
+    {
+        return Ok(_cuentaProveedor.ListarPorProveedor(proveedorId));
+    }
+
+    [AllowAnonymous]
+    [HttpPut("{proveedorId:long}/cuentas/{cuentaId:long}", Name = "ActualizarCuentaProveedor")]
+    [ProducesResponseType((int)HttpStatusCode.OK)]
+    public IActionResult ActualizarCuentaProveedor(long proveedorId, long cuentaId, [FromBody] CuentaProveedor cuenta)
+    {
+        cuenta.ProveedorId = proveedorId;
+        var ok = _cuentaProveedor.Actualizar(proveedorId, cuentaId, cuenta);
+        if (!ok) return NotFound();
+        return Ok(ok);
+    }
+
+    [AllowAnonymous]
+    [HttpDelete("{proveedorId:long}/cuentas/{cuentaId:long}", Name = "EliminarCuentaProveedor")]
+    [ProducesResponseType((int)HttpStatusCode.OK)]
+    public IActionResult EliminarCuentaProveedor(long proveedorId, long cuentaId)
+    {
+        var ok = _cuentaProveedor.Eliminar(proveedorId, cuentaId);
+        if (!ok) return NotFound();
+        return Ok(ok);
     }
 }
