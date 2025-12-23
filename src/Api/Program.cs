@@ -56,6 +56,7 @@ builder.Services.AddTransient<ICliente, ClienteRepository>();
 builder.Services.AddTransient<ICompania, CompaniaRepository>();
 builder.Services.AddTransient<IProveedor, ProveedorRepository>();
 builder.Services.AddTransient<ICuentaProveedor, CuentaProveedorRepository>();
+builder.Services.AddTransient<IUsuariosCrud, UsuariosCrudRepository>();
 
 // Add services to the container.
 

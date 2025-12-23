@@ -2,17 +2,22 @@ using Ecommerce.Application.Contracts.Usuarios;
 using Ecommerce.Application.Features.Auths.Users.Vms;
 using Ecommerce.Application.Identity;
 using Ecommerce.Domain;
+using Ecommerce.Application.Models.Token;
+using Microsoft.Extensions.Options;
 
 namespace Ecommerce.Infrastructure.Persistence.Repositories;
 
 public class UsuarioRepository : IUsuario
 {
     private readonly IAuthService _authService;
+    private readonly JwtSettings _jwtSettings;
 
     public UsuarioRepository(
-                    IAuthService authService)
+                    IAuthService authService,
+                    IOptions<JwtSettings> jwtSettings)
     {
         _authService = authService;
+        _jwtSettings = jwtSettings.Value;
     }
 
     AccesoDatos daSQL = new AccesoDatos();
@@ -37,6 +42,9 @@ public class UsuarioRepository : IUsuario
             }
         }
         string[] data = xinfo[0].Split('|');
+        var nowUtc = DateTime.UtcNow;
+        var expiresAtUtc = nowUtc.Add(_jwtSettings.ExpireTime);
+        var expiresInSeconds = (int)_jwtSettings.ExpireTime.TotalSeconds;
         var authResponse = new AuthResponseA
         {
             Id = data[0].ToString(),
@@ -49,7 +57,9 @@ public class UsuarioRepository : IUsuario
             //UsuarioSerie = data[7].ToString(),
             //Avatar = data[23].ToString(),
             //DireccionEnvio = _mapper.Map<AddressVm>(direccionEnvio),
-            Token = _authService.CreateTokenA(DateTime.Now.ToString("dd/MM/yyyy hh:mm:ss")),
+            Token = _authService.CreateTokenA(expiresAtUtc.ToString("O")),
+            ExpiresAtUtc = expiresAtUtc,
+            ExpiresInSeconds = expiresInSeconds
             //Roles = "ADMIN"
         };
         return authResponse;

@@ -14,5 +14,7 @@ public class AuthResponseA
     //public string? Avatar { get; set; }
     public string? Token { get; set; }
     //public string? Roles { get; set; }
+    public DateTime ExpiresAtUtc { get; set; }
+    public int ExpiresInSeconds { get; set; }
 
 }
