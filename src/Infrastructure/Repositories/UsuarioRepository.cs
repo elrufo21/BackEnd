@@ -20,7 +20,7 @@ public class UsuarioRepository : IUsuario
     {
         string? xvalue = string.Empty;
         string[] xinfo;
-        xvalue = loginUser.Email + "|" + loginUser.Password + "|";
+        xvalue = loginUser.Email + "|" + loginUser.Password;
         string? rpt;
         rpt = daSQL.ejecutarComando("uspValidaUsuario", "@Data", xvalue);
 
@@ -42,15 +42,15 @@ public class UsuarioRepository : IUsuario
             Id = data[0].ToString(),
             PersonalId = data[1].ToString(),
             Area = data[2].ToString(),
-            Nombre = data[3].ToString(),
+            Usuario = data[3].ToString(),
             CompaniaId = data[4].ToString(),
             RazonSocial = data[5].ToString(),
-            RUC = data[6].ToString(),
-            UsuarioSerie = data[7].ToString(),
-            Avatar = data[23].ToString(),
+            //RUC = data[6].ToString(),
+            //UsuarioSerie = data[7].ToString(),
+            //Avatar = data[23].ToString(),
             //DireccionEnvio = _mapper.Map<AddressVm>(direccionEnvio),
             Token = _authService.CreateTokenA(DateTime.Now.ToString("dd/MM/yyyy hh:mm:ss")),
-            Roles = "ADMIN"
+            //Roles = "ADMIN"
         };
         return authResponse;
     }
