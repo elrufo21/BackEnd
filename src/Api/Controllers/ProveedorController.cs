@@ -54,14 +54,11 @@ public class ProveedorController : ControllerBase
     }
 
     [AllowAnonymous]
-    [HttpPost("{proveedorId:long}/cuentas", Name = "CrearCuentaProveedor")]
+    [HttpPost("registerCuenta", Name = "CrearCuentaProveedor")]
     [ProducesResponseType(typeof(long), (int)HttpStatusCode.OK)]
-    public ActionResult<long> CrearCuentaProveedor(long proveedorId, [FromBody] CuentaProveedor cuenta)
+    public ActionResult<long> CrearCuentaProveedor([FromBody] CuentaProveedor cuenta)
     {
-        cuenta.ProveedorId = proveedorId;
-        var id = _cuentaProveedor.Insertar(cuenta);
-        if (id == 0) return BadRequest("No se pudo crear la cuenta.");
-        return Ok(id);
+       return Ok(_cuentaProveedor.Insertar(cuenta));
     }
 
     [AllowAnonymous]
@@ -73,22 +70,11 @@ public class ProveedorController : ControllerBase
     }
 
     [AllowAnonymous]
-    [HttpPut("{proveedorId:long}/cuentas/{cuentaId:long}", Name = "ActualizarCuentaProveedor")]
+    [HttpDelete("cuentas/{cuentaId:long}", Name = "EliminarCuentaProveedor")]
     [ProducesResponseType((int)HttpStatusCode.OK)]
-    public IActionResult ActualizarCuentaProveedor(long proveedorId, long cuentaId, [FromBody] CuentaProveedor cuenta)
+    public IActionResult EliminarCuentaProveedor(long cuentaId)
     {
-        cuenta.ProveedorId = proveedorId;
-        var ok = _cuentaProveedor.Actualizar(proveedorId, cuentaId, cuenta);
-        if (!ok) return NotFound();
-        return Ok(ok);
-    }
-
-    [AllowAnonymous]
-    [HttpDelete("{proveedorId:long}/cuentas/{cuentaId:long}", Name = "EliminarCuentaProveedor")]
-    [ProducesResponseType((int)HttpStatusCode.OK)]
-    public IActionResult EliminarCuentaProveedor(long proveedorId, long cuentaId)
-    {
-        var ok = _cuentaProveedor.Eliminar(proveedorId, cuentaId);
+        var ok = _cuentaProveedor.Eliminar(cuentaId);
         if (!ok) return NotFound();
         return Ok(ok);
     }

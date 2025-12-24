@@ -74,16 +74,12 @@ public class UsuariosCrudRepository : IUsuariosCrud
 
     public IReadOnlyList<UsuarioBd> Listar()
     {
-        const string sql = @"SELECT UsuarioID,
-                                    PersonalId,
-                                    UsuarioAlias,
-                                    UsuarioClave,
-                                    UsuarioFechaReg,
-                                    UsuarioEstado
-                             FROM Usuarios";
-
+        const string sql ="ListarUsuario";
         using var con = new SqlConnection(_connectionString);
         using var cmd = new SqlCommand(sql, con);
+        cmd.CommandTimeout = 300;
+        cmd.CommandType = CommandType.StoredProcedure;
+        if (con.State == ConnectionState.Open) con.Close();
         con.Open();
         using var reader = cmd.ExecuteReader();
         var lista = new List<UsuarioBd>();
@@ -189,11 +185,13 @@ public class UsuariosCrudRepository : IUsuariosCrud
         return new UsuarioBd
         {
             UsuarioID = Convert.ToInt32(reader["UsuarioID"]),
-            PersonalId = reader["PersonalId"] == DBNull.Value ? null : Convert.ToDecimal(reader["PersonalId"]),
+            PersonalId = reader["PersonalId"] == DBNull.Value ? null : Convert.ToInt32(reader["PersonalId"]),
+            Nombre = reader["Nombre"].ToString(),
             UsuarioAlias = reader["UsuarioAlias"].ToString(),
-            UsuarioClave = reader["UsuarioClave"] == DBNull.Value ? null : (byte[])reader["UsuarioClave"],
-            UsuarioFechaReg = reader["UsuarioFechaReg"] == DBNull.Value ? null : Convert.ToDateTime(reader["UsuarioFechaReg"]),
-            UsuarioEstado = reader["UsuarioEstado"].ToString()
+            UsuarioClave = reader["UsuarioClave"].ToString(),
+            Area = reader["Area"].ToString(),
+            UsuarioFechaReg = reader["Fecha"] == DBNull.Value ? null : Convert.ToDateTime(reader["Fecha"]),
+            UsuarioEstado = reader["Estado"].ToString()
         };
     }
 
@@ -202,10 +200,10 @@ public class UsuariosCrudRepository : IUsuariosCrud
         var usuario = new UsuarioConPersonal
         {
             UsuarioID = Convert.ToInt32(reader["UsuarioID"]),
-            PersonalId = reader["PersonalId"] == DBNull.Value ? null : Convert.ToDecimal(reader["PersonalId"]),
+            PersonalId = reader["PersonalId"] == DBNull.Value ? null : Convert.ToInt32(reader["PersonalId"]),
             UsuarioAlias = reader["UsuarioAlias"].ToString(),
-            UsuarioClave = reader["UsuarioClave"] == DBNull.Value ? null : (byte[])reader["UsuarioClave"],
-            UsuarioFechaReg = reader["UsuarioFechaReg"] == DBNull.Value ? null : Convert.ToDateTime(reader["UsuarioFechaReg"]),
+            UsuarioClave = reader["UsuarioClave"].ToString(),
+            UsuarioFechaReg = reader["Fecha"] == DBNull.Value ? null : Convert.ToDateTime(reader["Fecha"]),
             UsuarioEstado = reader["UsuarioEstado"].ToString()
         };
 

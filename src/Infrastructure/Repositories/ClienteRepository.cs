@@ -83,18 +83,4 @@ public class ClienteRepository : ICliente
         var rpt =daSQL.ejecutarComando("uspListaComboClienteWeb");
         return string.IsNullOrWhiteSpace(rpt) ? string.Empty : rpt;
     }
-
-    private static void AddParameters(SqlCommand cmd, Cliente cliente)
-    {
-        cmd.Parameters.AddWithValue("@Id", (object?)cliente.ClienteId ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("@ClienteRazon", (object?)cliente.ClienteRazon ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("@ClienteRuc", (object?)cliente.ClienteRuc ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("@ClienteDni", (object?)cliente.ClienteDni ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("@ClienteDireccion", (object?)cliente.ClienteDireccion ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("@ClienteTelefono", (object?)cliente.ClienteTelefono ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("@ClienteCorreo", (object?)cliente.ClienteCorreo ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("@ClienteEstado", (object?)cliente.ClienteEstado ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("@ClienteDespacho", (object?)cliente.ClienteDespacho ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("@ClienteUsuario", (object?)cliente.ClienteUsuario ?? DBNull.Value);
-    }
 }

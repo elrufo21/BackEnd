@@ -4,8 +4,7 @@ namespace Ecommerce.Application.Contracts.Proveedores;
 
 public interface ICuentaProveedor
 {
-    long Insertar(CuentaProveedor cuenta);
-    bool Actualizar(long proveedorId, long cuentaId, CuentaProveedor cuenta);
-    bool Eliminar(long proveedorId, long cuentaId);
+    string Insertar(CuentaProveedor cuenta);
+    bool Eliminar(long cuentaId);
     IReadOnlyList<CuentaProveedor> ListarPorProveedor(long proveedorId);
 }
