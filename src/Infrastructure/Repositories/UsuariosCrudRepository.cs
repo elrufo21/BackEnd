@@ -1,3 +1,4 @@
+using System;
 using System.Data;
 using Ecommerce.Application.Contracts.Usuarios;
 using Ecommerce.Domain;
@@ -19,45 +20,19 @@ public class UsuariosCrudRepository : IUsuariosCrud
 
     public int Insertar(UsuarioBd usuario)
     {
-        const string sql = @"INSERT INTO Usuarios (
-                                PersonalId,
-                                UsuarioAlias,
-                                UsuarioClave,
-                                UsuarioFechaReg,
-                                UsuarioEstado)
-                              VALUES (
-                                @PersonalId,
-                                @UsuarioAlias,
-                                @UsuarioClave,
-                                @UsuarioFechaReg,
-                                @UsuarioEstado);
-                              SELECT CAST(SCOPE_IDENTITY() AS INT);";
+        var (id, status) = EjecutarUpsert(0, usuario);
+        if (string.Equals(status, "EXISTE_USUARIO", StringComparison.OrdinalIgnoreCase))
+        {
+            return -1;
+        }
 
-        using var con = new SqlConnection(_connectionString);
-        using var cmd = new SqlCommand(sql, con);
-        AddParameters(cmd, usuario);
-        con.Open();
-        var result = cmd.ExecuteScalar();
-        return result == null ? 0 : Convert.ToInt32(result);
+        return id;
     }
 
     public bool Editar(int id, UsuarioBd usuario)
     {
-        const string sql = @"UPDATE Usuarios SET
-                                PersonalId = @PersonalId,
-                                UsuarioAlias = @UsuarioAlias,
-                                UsuarioClave = @UsuarioClave,
-                                UsuarioFechaReg = @UsuarioFechaReg,
-                                UsuarioEstado = @UsuarioEstado
-                             WHERE UsuarioID = @UsuarioID";
-
-        using var con = new SqlConnection(_connectionString);
-        using var cmd = new SqlCommand(sql, con);
-        AddParameters(cmd, usuario);
-        cmd.Parameters.AddWithValue("@UsuarioID", id);
-        con.Open();
-        var rows = cmd.ExecuteNonQuery();
-        return rows > 0;
+        var (_, status) = EjecutarUpsert(id, usuario);
+        return string.Equals(status, "UPDATED", StringComparison.OrdinalIgnoreCase);
     }
 
     public bool Eliminar(int id)
@@ -231,19 +206,39 @@ public class UsuariosCrudRepository : IUsuariosCrud
         return usuario;
     }
 
-    private static void AddParameters(SqlCommand cmd, UsuarioBd usuario)
+    private (int id, string? status) EjecutarUpsert(int usuarioId, UsuarioBd usuario)
     {
-        var personalParam = cmd.Parameters.Add("@PersonalId", SqlDbType.Decimal);
-        personalParam.Precision = 18;
-        personalParam.Scale = 0;
-        personalParam.Value = (object?)usuario.PersonalId ?? DBNull.Value;
+        using var con = new SqlConnection(_connectionString);
+        using var cmd = new SqlCommand("uspInsertarUsuario", con);
+        cmd.CommandTimeout = 300;
+        cmd.CommandType = CommandType.StoredProcedure;
+        var dataParam = cmd.Parameters.Add("@Data", SqlDbType.VarChar, -1);
+        dataParam.Value = BuildDataString(usuarioId, usuario);
 
-        cmd.Parameters.AddWithValue("@UsuarioAlias", (object?)usuario.UsuarioAlias ?? DBNull.Value);
+        con.Open();
+        var result = cmd.ExecuteScalar();
 
-        var claveParam = cmd.Parameters.Add("@UsuarioClave", SqlDbType.VarBinary, 500);
-        claveParam.Value = (object?)usuario.UsuarioClave ?? DBNull.Value;
+        if (result == null)
+        {
+            return (0, null);
+        }
 
-        cmd.Parameters.AddWithValue("@UsuarioFechaReg", (object?)usuario.UsuarioFechaReg ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("@UsuarioEstado", (object?)usuario.UsuarioEstado ?? DBNull.Value);
+        var resultString = result.ToString();
+        if (int.TryParse(resultString, out var id))
+        {
+            return (id, null);
+        }
+
+        return (0, resultString);
+    }
+
+    private static string BuildDataString(int usuarioId, UsuarioBd usuario)
+    {
+        var personalId = usuario.PersonalId ?? 0;
+        var alias = usuario.UsuarioAlias?.Trim() ?? string.Empty;
+        var clave = usuario.UsuarioClave?.Trim() ?? string.Empty;
+        var estado = usuario.UsuarioEstado?.Trim() ?? string.Empty;
+
+        return $"{usuarioId}|{personalId}|{alias}|{clave}|{estado}";
     }
 }

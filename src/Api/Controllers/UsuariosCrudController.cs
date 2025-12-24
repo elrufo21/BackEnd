@@ -23,6 +23,7 @@ public class UsuariosCrudController : ControllerBase
     public IActionResult RegisterUsuario([FromBody] UsuarioBd usuario)
     {
         var id = _usuariosCrud.Insertar(usuario);
+        if (id == -1) return Conflict("El alias de usuario ya existe.");
         if (id == 0) return BadRequest("No se pudo crear el usuario.");
         return Ok(id);
     }
