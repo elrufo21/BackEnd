@@ -35,9 +35,9 @@ public class ClienteController: ControllerBase
     [AllowAnonymous]
     [HttpGet("list", Name = "GetClienteList")]
     [ProducesResponseType(typeof(IReadOnlyList<Cliente>), (int)HttpStatusCode.OK)]
-    public ActionResult<IReadOnlyList<Cliente>> GetClienteList()
+    public ActionResult<IReadOnlyList<Cliente>> GetClienteList([FromQuery] string? estado = "ACTIVO")
     {
-        return Ok(_mediator.Listar());
+        return Ok(_mediator.Listar(estado));
     }
 
     [AllowAnonymous]

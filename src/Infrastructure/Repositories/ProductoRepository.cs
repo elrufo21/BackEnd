@@ -61,7 +61,7 @@ public class ProductoRepository : IProducto
         return reader.Read() ? MapProducto(reader) : null;
     }
 
-    public IReadOnlyList<Producto> ListarCrud()
+    public IReadOnlyList<Producto> ListarCrud(string? estado = "ACTIVO")
     {
         var lista = new List<Producto>();
         const string sql = "uspListarProducto";
@@ -69,6 +69,7 @@ public class ProductoRepository : IProducto
         using var cmd = new SqlCommand(sql, con);
         cmd.CommandTimeout = 300;
         cmd.CommandType = CommandType.StoredProcedure;
+        cmd.Parameters.AddWithValue("@Estado", (object?)estado ?? DBNull.Value);
         if (con.State == ConnectionState.Open) con.Close();
         con.Open();
         using var reader = cmd.ExecuteReader();

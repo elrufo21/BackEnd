@@ -51,9 +51,9 @@ public class UsuariosCrudController : ControllerBase
     [AllowAnonymous]
     [HttpGet("list", Name = "GetUsuariosCrudList")]
     [ProducesResponseType(typeof(IReadOnlyList<UsuarioBd>), (int)HttpStatusCode.OK)]
-    public ActionResult<IReadOnlyList<UsuarioBd>> GetUsuariosList()
+    public ActionResult<IReadOnlyList<UsuarioBd>> GetUsuariosList([FromQuery] string? estado = "ACTIVO")
     {
-        return Ok(_usuariosCrud.Listar());
+        return Ok(_usuariosCrud.Listar(estado));
     }
 
     [AllowAnonymous]

@@ -86,8 +86,8 @@ public class PersonalController : ControllerBase
     [AllowAnonymous]
     [HttpGet("list", Name = "GetPersonalList")]
     [ProducesResponseType(typeof(IReadOnlyList<Personal>), (int)HttpStatusCode.OK)]
-    public ActionResult<IReadOnlyList<Personal>> GetPersonalList()
+    public ActionResult<IReadOnlyList<Personal>> GetPersonalList([FromQuery] string? estado = "ACTIVO")
     {
-        return Ok(_mediator.Listar());
+        return Ok(_mediator.Listar(estado));
     }
 }

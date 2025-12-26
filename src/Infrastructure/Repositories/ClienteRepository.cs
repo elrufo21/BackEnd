@@ -46,7 +46,7 @@ public class ClienteRepository : ICliente
         return rows > 0;
     }
 
-    public IReadOnlyList<Cliente> Listar()
+    public IReadOnlyList<Cliente> Listar(string? estado = "ACTIVO")
     {
         var lista = new List<Cliente>();
         const string sql = "uspListarClientes";
@@ -54,6 +54,7 @@ public class ClienteRepository : ICliente
         using var cmd = new SqlCommand(sql, con);
         cmd.CommandTimeout = 300;
         cmd.CommandType = CommandType.StoredProcedure;
+        cmd.Parameters.AddWithValue("@Estado", (object?)estado ?? DBNull.Value);
         if (con.State == ConnectionState.Open) con.Close();
         con.Open();
         using var reader = cmd.ExecuteReader();

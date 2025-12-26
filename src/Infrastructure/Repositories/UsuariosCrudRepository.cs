@@ -47,13 +47,14 @@ public class UsuariosCrudRepository : IUsuariosCrud
         return rows > 0;
     }
 
-    public IReadOnlyList<UsuarioBd> Listar()
+    public IReadOnlyList<UsuarioBd> Listar(string? estado = "ACTIVO")
     {
         const string sql ="ListarUsuario";
         using var con = new SqlConnection(_connectionString);
         using var cmd = new SqlCommand(sql, con);
         cmd.CommandTimeout = 300;
         cmd.CommandType = CommandType.StoredProcedure;
+        cmd.Parameters.AddWithValue("@Estado", (object?)estado ?? DBNull.Value);
         if (con.State == ConnectionState.Open) con.Close();
         con.Open();
         using var reader = cmd.ExecuteReader();

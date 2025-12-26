@@ -6,5 +6,5 @@ public interface IPersonal
 {
     string Insertar(Personal personal);
     bool Eliminar(long id);
-    IReadOnlyList<Personal> Listar();
+    IReadOnlyList<Personal> Listar(string? estado = "ACTIVO");
 }

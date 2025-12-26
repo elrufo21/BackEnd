@@ -44,7 +44,7 @@ public class PersonalRepository : IPersonal
         var rows = cmd.ExecuteNonQuery();
         return rows > 0;
     }
-    public IReadOnlyList<Personal> Listar()
+    public IReadOnlyList<Personal> Listar(string? estado = "ACTIVO")
     {
         var lista = new List<Personal>();
         const string sql = "listarPersonal";
@@ -52,6 +52,7 @@ public class PersonalRepository : IPersonal
         using var cmd = new SqlCommand(sql, con);
         cmd.CommandTimeout = 300;
         cmd.CommandType = CommandType.StoredProcedure;
+        cmd.Parameters.AddWithValue("@Estado", (object?)estado ?? DBNull.Value);
         if (con.State == ConnectionState.Open) con.Close();
         con.Open();
         using var reader = cmd.ExecuteReader();

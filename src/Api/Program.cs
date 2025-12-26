@@ -12,6 +12,7 @@ using Ecommerce.Application.Contracts.Companias;
 using Ecommerce.Application.Contracts.Usuarios;
 using Ecommerce.Application.Contracts.Clientes;
 using Ecommerce.Application.Contracts.Proveedores;
+using Ecommerce.Application.Contracts.Feriados;
 using Ecommerce.Domain;
 using Ecommerce.Infrastructure.ImageCloudinary;
 using Ecommerce.Infrastructure.Persistence;
@@ -49,6 +50,7 @@ builder.Services.AddTransient<ICompania, CompaniaRepository>();
 builder.Services.AddTransient<IProveedor, ProveedorRepository>();
 builder.Services.AddTransient<ICuentaProveedor, CuentaProveedorRepository>();
 builder.Services.AddTransient<IUsuariosCrud, UsuariosCrudRepository>();
+builder.Services.AddTransient<IFeriado, FeriadoRepository>();
 
 // Add services to the container.
 

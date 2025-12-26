@@ -108,9 +108,9 @@ public class ProductosController : ControllerBase
     [AllowAnonymous]
     [HttpGet("list", Name = "GetProductoList")]
     [ProducesResponseType(typeof(IReadOnlyList<Producto>), (int)HttpStatusCode.OK)]
-    public ActionResult<IReadOnlyList<Producto>> GetProductoList()
+    public ActionResult<IReadOnlyList<Producto>> GetProductoList([FromQuery] string? estado = "ACTIVO")
     {
-        return Ok(_mediator.ListarCrud());
+        return Ok(_mediator.ListarCrud(estado));
     }
 
     [AllowAnonymous]
