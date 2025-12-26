@@ -24,8 +24,8 @@ public class ProveedorRepository : IProveedor
         string xvalue = string.Empty;
         xvalue = proveedor.ProveedorId + "|" + proveedor.ProveedorRazon?.Trim() + "|" +
         proveedor.ProveedorRuc?.Trim() + "|" + proveedor.ProveedorContacto?.Trim() + "|" +
-        proveedor.ProveedorCelular?.Trim() + "|" + proveedor.ProveedorTelefono + "|" +
-        proveedor.ProveedorCorreo?.Trim() + "|" + proveedor.ProveedorDireccion + "|" +
+        proveedor.ProveedorCelular?.Trim() + "|" + proveedor.ProveedorTelefono?.Trim() + "|" +
+        proveedor.ProveedorCorreo?.Trim() + "|" + proveedor.ProveedorDireccion?.Trim() + "|" +
         proveedor.ProveedorEstado;
         rpt = daSQL.ejecutarComando("uspInsertarProveedor", "@Data", xvalue);
         if (string.IsNullOrEmpty(rpt)) rpt = "error";

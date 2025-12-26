@@ -1,5 +1,4 @@
 using Ecommerce.Application.Contracts.Usuarios;
-using Ecommerce.Application.Features.Auths.Users.Vms;
 using Ecommerce.Application.Identity;
 using Ecommerce.Domain;
 using Ecommerce.Application.Models.Token;

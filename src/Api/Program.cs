@@ -1,20 +1,17 @@
 using System.Text;
 using System.Text.Json.Serialization;
-using Ecommerce.Api.Middlewares;
 using Ecommerce.Application;
 using Ecommerce.Application.Contracts.Infrastructure;
 using Ecommerce.Application.Contracts.Areas;
 using Ecommerce.Application.Contracts.Maquinas;
 using Ecommerce.Application.Contracts.Personales;
 using Ecommerce.Application.Contracts.Lineas;
-using Ecommerce.Api.Converters;
 using Ecommerce.Application.Contracts.NotaPedido;
 using Ecommerce.Application.Contracts.Productos;
 using Ecommerce.Application.Contracts.Companias;
 using Ecommerce.Application.Contracts.Usuarios;
 using Ecommerce.Application.Contracts.Clientes;
 using Ecommerce.Application.Contracts.Proveedores;
-using Ecommerce.Application.Features.Products.Queries.GetProductList;
 using Ecommerce.Domain;
 using Ecommerce.Infrastructure.ImageCloudinary;
 using Ecommerce.Infrastructure.Persistence;
@@ -28,7 +25,6 @@ using Microsoft.AspNetCore.Mvc.Authorization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.IdentityModel.Tokens;
-
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddInfrastructureServices(builder.Configuration);
@@ -39,8 +35,6 @@ builder.Services.AddDbContext<EcommerceDbContext>(options =>
     b => b.MigrationsAssembly(typeof(EcommerceDbContext).Assembly.FullName)
     )
 );
-
-builder.Services.AddMediatR(typeof(GetProductListQueryHandler).Assembly);
 
 builder.Services.AddScoped<IManageImageService, ManageImageService>();
 builder.Services.AddTransient<IArea, AreaRepository>();
@@ -65,7 +59,7 @@ builder.Services.AddControllers(opt =>
 }).AddJsonOptions(x =>
 {
     x.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
-    x.JsonSerializerOptions.Converters.Add(new NullableDateTimeConverter());
+    //x.JsonSerializerOptions.Converters.Add(new NullableDateTimeConverter());
 });
 
 IdentityBuilder identityBuilder = builder.Services.AddIdentityCore<Usuario>();
@@ -115,9 +109,6 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-//app.UseHttpsRedirection();
-app.UseMiddleware<ExceptionMiddleware>();
-
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseCors("CorsPolicy");
@@ -136,7 +127,7 @@ using (var scope = app.Services.CreateScope())
         var usuarioManager = service.GetRequiredService<UserManager<Usuario>>();
         var roleManager = service.GetRequiredService<RoleManager<IdentityRole>>();
         await context.Database.MigrateAsync();
-        await EcommerceDbContextData.LoadDataAsync(context, usuarioManager, roleManager, loggerFactory);
+        //await EcommerceDbContextData.LoadDataAsync(context, usuarioManager, roleManager, loggerFactory);
     }
     catch (Exception ex)
     {

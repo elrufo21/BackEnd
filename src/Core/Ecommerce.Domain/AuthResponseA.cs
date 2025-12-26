@@ -1,9 +1,7 @@
-
-namespace Ecommerce.Application.Features.Auths.Users.Vms;
-
+namespace Ecommerce.Domain;
 public class AuthResponseA
 {
-    public string? Id { get; set; }
+   public string? Id { get; set; }
     public string? PersonalId { get; set; }
     public string? Area { get; set; }
     public string? Usuario { get; set; }

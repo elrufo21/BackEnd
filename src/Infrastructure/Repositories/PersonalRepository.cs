@@ -21,11 +21,12 @@ public class PersonalRepository : IPersonal
     {
         string rpt = string.Empty;
         string xvalue = string.Empty;
-        xvalue = personal.PersonalId + "|" + personal.PersonalNombres + "|" +
-        personal.PersonalApellidos + "|" + personal.AreaId + "|" + personal.PersonalCodigo + "|" +
+        xvalue = personal.PersonalId + "|" + personal.PersonalNombres?.Trim() + "|" +
+        personal.PersonalApellidos?.Trim() + "|" + personal.AreaId + "|" + personal.PersonalCodigo?.Trim() + "|" +
         personal.PersonalNacimiento?.Date.ToString("MM-dd-yyyy") + "|" + personal.PersonalIngreso?.Date.ToString("MM-dd-yyyy") + "|" +
-        personal.PersonalDNI + "|" + personal.PersonalDireccion + "|" + personal.PersonalTelefono + "|" + personal.PersonalEmail + "|" +
-        personal.PersonalEstado + "|" + personal.PersonalImagen + "|" + personal.CompaniaId;
+        personal.PersonalDNI?.Trim() + "|" + personal.PersonalDireccion?.Trim() + "|" + 
+        personal.PersonalTelefono?.Trim() + "|" + personal.PersonalEmail?.Trim() + "|" +personal.PersonalEstado + "|" +
+         personal.PersonalImagen + "|" + personal.CompaniaId;
         rpt = daSQL.ejecutarComando("uspIngresarPersonal", "@Data", xvalue);
         if (string.IsNullOrEmpty(rpt)) rpt = "error";
         return rpt;

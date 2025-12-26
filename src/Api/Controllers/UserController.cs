@@ -1,6 +1,5 @@
 using System.Net;
 using Ecommerce.Application.Contracts.Usuarios;
-using Ecommerce.Application.Features.Auths.Users.Vms;
 using Ecommerce.Domain;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;

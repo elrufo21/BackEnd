@@ -25,7 +25,7 @@ public class ProductoRepository : IProducto
         string xvalue = string.Empty;
         xvalue = producto.IdProducto + "|" + producto.IdSubLinea + "|" +
         producto.ProductoCodigo?.Trim() + "|" + producto.ProductoNombre?.Trim() + "|" + 
-        producto.ProductoUM + "|" +Convert.ToDecimal(producto.ProductoCosto)+ "|" +Convert.ToDecimal(producto.ProductoVenta)+ "|" +
+        producto.ProductoUM?.Trim() + "|" +Convert.ToDecimal(producto.ProductoCosto)+ "|" +Convert.ToDecimal(producto.ProductoVenta)+ "|" +
         Convert.ToDecimal(producto.ProductoVentaB) + "|" + Convert.ToDecimal(producto.ProductoCantidad) + "|" +
         producto.ProductoEstado + "|" +producto.ProductoUsuario+ "|" +
         producto.ProductoImagen+ "|" + Convert.ToDecimal(producto.ValorCritico) + "|" +producto.AplicaINV;

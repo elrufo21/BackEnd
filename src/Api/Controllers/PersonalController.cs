@@ -4,7 +4,6 @@ using Ecommerce.Application.Contracts.Infrastructure;
 using Ecommerce.Application.Models.ImageManagement;
 using Ecommerce.Domain;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Ecommerce.Api.Controllers;

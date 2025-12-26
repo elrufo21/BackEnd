@@ -1,8 +1,8 @@
 using System.Linq.Expressions;
 using Ecommerce.Application.Persistence;
-using Ecommerce.Application.Specifications;
-using Ecommerce.Infrastructure.Persistence;
-using Ecommerce.Infrastructure.Specification;
+//using Ecommerce.Application.Specifications;
+//using Ecommerce.Infrastructure.Persistence;
+//using Ecommerce.Infrastructure.Specification;
 using Microsoft.EntityFrameworkCore;
 
 namespace Ecommerce.Infrastructure.Persistence.Repositories;
@@ -127,26 +127,5 @@ public class RepositoryBase<T> : IAsyncRepository<T> where T : class
        _context.Set<T>().Attach(entity);
        _context.Entry(entity).State = EntityState.Modified;
     }
-
-    public async Task<int> CountAsync(ISpecification<T> spec)
-    {
-         return await ApplySpecification(spec).CountAsync();
-    }
-
-    public async Task<IReadOnlyList<T>> GetAllWithSpec(ISpecification<T> spec)
-    {
-        return await ApplySpecification(spec).ToListAsync();
-    }
-
-    public async Task<T> GetByIdWithSpec(ISpecification<T> spec)
-    {
-        return (await ApplySpecification(spec).FirstOrDefaultAsync())!;
-    }
-
-    public IQueryable<T> ApplySpecification(ISpecification<T> spec)
-    {
-        return SpecificationEvaluator<T>.GetQuery(_context.Set<T>().AsQueryable(), spec);
-    }
-
-
+    
 }

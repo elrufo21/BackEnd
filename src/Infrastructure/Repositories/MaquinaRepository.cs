@@ -22,8 +22,8 @@ public class MaquinaRepository : IMaquina
     {
         string rpt = string.Empty;
         string xvalue = string.Empty;
-        xvalue = maquina.IdMaquina + "|" + maquina.NombreMaquina + "|" + maquina.SerieFactura + "|" +
-        maquina.SerieNC + "|" + maquina.SerieBoleta + "|" + maquina.Tiketera;
+        xvalue = maquina.IdMaquina + "|" + maquina.NombreMaquina?.Trim() + "|" + maquina.SerieFactura?.Trim() + "|" +
+        maquina.SerieNC?.Trim() + "|" + maquina.SerieBoleta?.Trim() + "|" + maquina.Tiketera?.Trim();
         rpt = daSQL.ejecutarComando("uspInsertarMaquina", "@Data", xvalue);
         if (string.IsNullOrEmpty(rpt)) rpt = "error";
         return rpt;
@@ -65,7 +65,6 @@ public class MaquinaRepository : IMaquina
                 Tiketera = reader["Tiketera"].ToString()
             });
         }
-
         return lista;
     }
 }

@@ -36,7 +36,7 @@ public class LineaRepository : ILinea
     {
         string rpt = string.Empty;
         string xvalue=string.Empty;
-        xvalue=linea.IdSubLinea+"|"+linea.NombreSublinea+"|"+linea.CodigoSunat;
+        xvalue=linea.IdSubLinea+"|"+linea.NombreSublinea?.Trim()+"|"+linea.CodigoSunat?.Trim();
         rpt = daSQL.ejecutarComando("uspInsertarCategoria", "@Data",xvalue);
         if (string.IsNullOrEmpty(rpt)) rpt = "error";
         return rpt;

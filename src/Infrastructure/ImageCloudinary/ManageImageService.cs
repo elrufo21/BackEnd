@@ -1,6 +1,4 @@
 using System.Net;
-using System.Linq;
-using System;
 using CloudinaryDotNet;
 using CloudinaryDotNet.Actions;
 using Ecommerce.Application.Contracts.Infrastructure;

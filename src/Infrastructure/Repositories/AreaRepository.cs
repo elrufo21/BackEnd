@@ -22,7 +22,7 @@ public class AreaRepository : IArea
     {
         string rpt = string.Empty;
         string xvalue=string.Empty;
-        xvalue=area.AreaId+"|"+area.AreaNombre;
+        xvalue=area.AreaId+"|"+area.AreaNombre?.Trim();
         rpt = daSQL.ejecutarComando("uspInsertarArea", "@Data",xvalue);
         if (string.IsNullOrEmpty(rpt)) rpt = "error";
         return rpt;
