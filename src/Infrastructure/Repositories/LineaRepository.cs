@@ -45,7 +45,7 @@ public class LineaRepository : ILinea
     public IReadOnlyList<EGeneral> Listar()
     {
         var lista = new List<EGeneral>();
-        const string sql = "SELECT IdSubLinea, NombreSublinea, CodigoSunat FROM Sublinea order by NombreSublinea asc";
+        const string sql = "SELECT IdSubLinea, NombreSublinea, CodigoSunat FROM Sublinea order by IdSubLinea desc";
 
         using var con = new SqlConnection(_connectionString);
         using var cmd = new SqlCommand(sql, con);

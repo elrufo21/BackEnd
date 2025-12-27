@@ -37,11 +37,13 @@ public class UsuariosCrudRepository : IUsuariosCrud
 
     public bool Eliminar(int id)
     {
-        const string sql = "DELETE FROM Usuarios WHERE UsuarioID = @UsuarioID";
-
+        const string sql = "uspEliminarUsuario";
         using var con = new SqlConnection(_connectionString);
         using var cmd = new SqlCommand(sql, con);
-        cmd.Parameters.AddWithValue("@UsuarioID", id);
+        cmd.CommandTimeout = 300;
+        cmd.CommandType = CommandType.StoredProcedure;
+        cmd.Parameters.AddWithValue("@Id", id);
+        if (con.State == ConnectionState.Open) con.Close();
         con.Open();
         var rows = cmd.ExecuteNonQuery();
         return rows > 0;
