@@ -38,9 +38,9 @@ public class ProveedorController : ControllerBase
     [AllowAnonymous]
     [HttpGet("list", Name = "GetProveedorList")]
     [ProducesResponseType(typeof(IReadOnlyList<Proveedor>), (int)HttpStatusCode.OK)]
-    public ActionResult<IReadOnlyList<Proveedor>> GetProveedorList()
+    public ActionResult<IReadOnlyList<Proveedor>> GetProveedorList([FromQuery] string? estado = "ACTIVO")
     {
-        return Ok(_mediator.Listar());
+        return Ok(_mediator.Listar(estado));
     }
 
     [AllowAnonymous]

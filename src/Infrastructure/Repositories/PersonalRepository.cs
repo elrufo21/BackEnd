@@ -23,9 +23,9 @@ public class PersonalRepository : IPersonal
         string xvalue = string.Empty;
         xvalue = personal.PersonalId + "|" + personal.PersonalNombres?.Trim() + "|" +
         personal.PersonalApellidos?.Trim() + "|" + personal.AreaId + "|" + personal.PersonalCodigo?.Trim() + "|" +
-        personal.PersonalNacimiento?.Date.ToString("MM-dd-yyyy") + "|" + personal.PersonalIngreso?.Date.ToString("MM-dd-yyyy") + "|" +
-        personal.PersonalDNI?.Trim() + "|" + personal.PersonalDireccion?.Trim() + "|" + 
-        personal.PersonalTelefono?.Trim() + "|" + personal.PersonalEmail?.Trim() + "|" +personal.PersonalEstado + "|" +
+        FormatDate(personal.PersonalNacimiento) + "|" + FormatDate(personal.PersonalIngreso) + "|" +
+        personal.PersonalDNI?.Trim() + "|" + personal.PersonalDireccion?.Trim() + "|" +
+        personal.PersonalTelefono?.Trim() + "|" + personal.PersonalEmail?.Trim() + "|" + personal.PersonalEstado + "|" +
          personal.PersonalImagen + "|" + personal.CompaniaId;
         rpt = daSQL.ejecutarComando("uspIngresarPersonal", "@Data", xvalue);
         if (string.IsNullOrEmpty(rpt)) rpt = "error";
@@ -101,5 +101,11 @@ public class PersonalRepository : IPersonal
         return DateTime.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var parsed)
             ? parsed
             : (DateTime?)null;
+    }
+
+    private static string? FormatDate(DateTime? date)
+    {
+        // ISO 8601 date keeps SQL parsing culture-agnostic (avoids losing PersonalIngreso)
+        return date?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
     }
 }
