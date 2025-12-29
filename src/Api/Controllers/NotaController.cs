@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Text.Json;
 using Newtonsoft.Json.Linq;
+using System.Collections.Generic;
 
 namespace Ecommerce.Api.Controllers;
 
@@ -25,6 +26,61 @@ public class NotaController : ControllerBase
     {
         return Ok(_mediator.Listar());
     }
+
+    [AllowAnonymous]
+    [HttpGet("crud", Name = "GetNotaPedidoCrud")]
+    [ProducesResponseType(typeof(IReadOnlyList<NotaPedido>), (int)HttpStatusCode.OK)]
+    public ActionResult<IReadOnlyList<NotaPedido>> ListarNotaCrud([FromQuery] string? estado = null)
+    {
+        return Ok(_mediator.ListarCrud(estado));
+    }
+
+    [AllowAnonymous]
+    [HttpGet("{id:long}", Name = "GetNotaPedidoById")]
+    [ProducesResponseType(typeof(NotaPedido), (int)HttpStatusCode.OK)]
+    public ActionResult<NotaPedido?> ObtenerNotaPedido(long id)
+    {
+        var nota = _mediator.ObtenerPorId(id);
+        if (nota is null) return NotFound();
+        return Ok(nota);
+    }
+
+    [AllowAnonymous]
+    [HttpGet("{id:long}/detalles", Name = "GetNotaPedidoDetalles")]
+    [ProducesResponseType(typeof(IReadOnlyList<DetalleNota>), (int)HttpStatusCode.OK)]
+    public ActionResult<IReadOnlyList<DetalleNota>> ObtenerDetalles(long id)
+    {
+        return Ok(_mediator.ListarDetalle(id));
+    }
+
+    [AllowAnonymous]
+    [HttpPost("register", Name = "RegisterNotaPedido")]
+    [ProducesResponseType((int)HttpStatusCode.OK)]
+    public IActionResult RegistrarNotaPedido([FromBody] NotaPedido notaPedido)
+    {
+        return Ok(_mediator.Insertar(notaPedido));
+    }
+
+    [AllowAnonymous]
+    [HttpPost("register-with-detail", Name = "RegisterNotaPedidoConDetalle")]
+    [ProducesResponseType((int)HttpStatusCode.OK)]
+    public IActionResult RegistrarNotaPedidoConDetalle([FromBody] NotaPedidoConDetalleRequest request)
+    {
+        if (request is null || request.Nota is null)
+        {
+            return BadRequest("NotaPedido requerida.");
+        }
+        return Ok(_mediator.InsertarConDetalle(request.Nota, request.Detalles ?? new List<DetalleNota>()));
+    }
+
+    [AllowAnonymous]
+    [HttpDelete("{id:long}", Name = "EliminarNotaPedido")]
+    [ProducesResponseType((int)HttpStatusCode.OK)]
+    public IActionResult EliminarNotaPedido(long id)
+    {
+        return Ok(_mediator.Eliminar(id));
+    }
+
     [AllowAnonymous]
     [HttpPost("crearOrden", Name = "CrearOrden")]
     [ProducesResponseType((int)HttpStatusCode.OK)]
@@ -100,6 +156,12 @@ public class NotaController : ControllerBase
         }
         vdata += "[";
         Console.WriteLine("aramirez DES: " + vdata);
-        return Ok(_mediator.Insertar(vdata));
+        return Ok(_mediator.RegistrarOrden(vdata));
     }
+}
+
+public class NotaPedidoConDetalleRequest
+{
+    public NotaPedido? Nota { get; set; }
+    public List<DetalleNota>? Detalles { get; set; }
 }
