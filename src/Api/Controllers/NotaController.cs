@@ -114,6 +114,25 @@ public class NotaController : ControllerBase
     [ProducesResponseType((int)HttpStatusCode.OK)]
     public IActionResult RegistrarOrden(JsonElement body)
     {
+        if (body.ValueKind != JsonValueKind.Object)
+        {
+            return BadRequest("Se requiere un JSON objeto con Nota/nota o requestDetalle.");
+        }
+
+        var hasNotaObject = body.TryGetProperty("Nota", out _) || body.TryGetProperty("nota", out _);
+        if (hasNotaObject)
+        {
+            var request = JsonSerializer.Deserialize<NotaPedidoConDetalleRequest>(body.GetRawText(),
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            if (request?.Nota is null)
+            {
+                return BadRequest("NotaPedido requerida.");
+            }
+            var detalles = request.Detalles ?? new List<DetalleNota>();
+            var vdataNota = BuildOrdenPayload(request.Nota, detalles);
+            return Ok(_mediator.RegistrarOrden(vdataNota));
+        }
+
         var vdata = BuildOrdenPayload(body);
         return Ok(_mediator.RegistrarOrden(vdata));
     }
