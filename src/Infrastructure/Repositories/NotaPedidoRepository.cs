@@ -26,6 +26,12 @@ public class NotaPedidoRepository : INotaPedido
         return string.IsNullOrEmpty(rpt) ? "error" : rpt;
     }
 
+    public string EditarOrden(string data)
+    {
+        var rpt = _accesoDatos.ejecutarComando("uspEditarNotaPedido", "@ListaOrden", data);
+        return string.IsNullOrEmpty(rpt) ? "error" : rpt;
+    }
+
     public string Insertar(NotaPedido notaPedido)
     {
         using var con = new SqlConnection(_connectionString);

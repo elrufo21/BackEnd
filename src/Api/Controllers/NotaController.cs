@@ -68,8 +68,12 @@ public class NotaController : ControllerBase
     [ProducesResponseType((int)HttpStatusCode.OK)]
     public IActionResult RegistrarNotaPedidoConDetalle([FromBody] JsonElement body)
     {
-        var hasNotaObject = body.ValueKind == JsonValueKind.Object &&
-                            (body.TryGetProperty("Nota", out _) || body.TryGetProperty("nota", out _));
+        if (body.ValueKind != JsonValueKind.Object)
+        {
+            return BadRequest("Se requiere un JSON objeto con Nota/nota o requestDetalle.");
+        }
+
+        var hasNotaObject = body.TryGetProperty("Nota", out _) || body.TryGetProperty("nota", out _);
         if (hasNotaObject)
         {
             var request = JsonSerializer.Deserialize<NotaPedidoConDetalleRequest>(body.GetRawText(),
@@ -80,25 +84,11 @@ public class NotaController : ControllerBase
             }
             var detalles = request.Detalles ?? new List<DetalleNota>();
             var vdataNota = BuildOrdenPayload(request.Nota, detalles);
-            Console.WriteLine("Preview register-with-detail (nota/detalles -> orden-string): " + vdataNota);
-            return Ok(new
-            {
-                mode = "nota-detalle",
-                data = vdataNota,
-                nota = request.Nota,
-                detalles,
-                info = "Preview only, not persisted"
-            });
+            return Ok(_mediator.RegistrarOrden(vdataNota));
         }
 
         var vdata = BuildOrdenPayload(body);
-        Console.WriteLine("Preview register-with-detail (orden-string): " + vdata);
-        return Ok(new
-        {
-            mode = "orden-string",
-            data = vdata,
-            info = "Preview only, not persisted"
-        });
+        return Ok(_mediator.RegistrarOrden(vdata));
     }
 
     [AllowAnonymous]
@@ -137,6 +127,34 @@ public class NotaController : ControllerBase
         return Ok(_mediator.RegistrarOrden(vdata));
     }
 
+    [AllowAnonymous]
+    [HttpPut("editarOrden", Name = "EditarOrden")]
+    [ProducesResponseType((int)HttpStatusCode.OK)]
+    public IActionResult EditarOrden(JsonElement body)
+    {
+        if (body.ValueKind != JsonValueKind.Object)
+        {
+            return BadRequest("Se requiere un JSON objeto con Nota/nota o requestDetalle.");
+        }
+
+        var hasNotaObject = body.TryGetProperty("Nota", out _) || body.TryGetProperty("nota", out _);
+        if (hasNotaObject)
+        {
+            var request = JsonSerializer.Deserialize<NotaPedidoConDetalleRequest>(body.GetRawText(),
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            if (request?.Nota is null)
+            {
+                return BadRequest("NotaPedido requerida.");
+            }
+            var detalles = request.Detalles ?? new List<DetalleNota>();
+            var vdataNota = BuildEditarPayload(request.Nota, detalles);
+            return Ok(_mediator.EditarOrden(vdataNota));
+        }
+
+        var vdata = BuildEditarPayload(body);
+        return Ok(_mediator.EditarOrden(vdata));
+    }
+
     private string BuildOrdenPayload(NotaPedido nota, IEnumerable<DetalleNota> detalles)
     {
         var detalleList = detalles == null ? new List<DetalleNota>() : new List<DetalleNota>(detalles);
@@ -157,6 +175,24 @@ public class NotaController : ControllerBase
         var xDocumento = string.IsNullOrWhiteSpace(nota.NotaDocu) ? "BOLETA" : nota.NotaDocu!;
         var xserie = nota.NotaSerie ?? string.Empty;
         var numero = nota.NotaNumero ?? string.Empty;
+        // Defaults for uspinsertarNotaB fields not present in NotaPedido payloads
+        var docuAdicional = 0m;
+        var docuHash = string.Empty;
+        var estadoSunat = "PENDIENTE";
+        var docuSubtotal = subtotal;
+        var docuIgv = igv;
+        var usuarioId = "7";
+        var docuGravada = subtotal;
+        var docuDescuento = 0m;
+        var notaIdbr = nota.NotaId > 0 ? nota.NotaId.ToString() : "0";
+        var entidadBancaria = nota.EntidadBancaria ?? "-";
+        var nroOperacion = nota.NroOperacion ?? string.Empty;
+        var efectivo = nota.Efectivo ?? pagar;
+        var deposito = nota.Deposito ?? 0m;
+        var clienteRazon = string.Empty;
+        var clienteRuc = string.Empty;
+        var clienteDni = string.Empty;
+        var direccionFiscal = string.Empty;
 
         var headerFields = new List<string?>
         {
@@ -184,16 +220,24 @@ public class NotaController : ControllerBase
             numero,
             Format2(ganancia),
             Letras.enletras(total.ToString("N2")) + "  SOLES",
-            Format2(0m),
-            string.Empty,
-            "PENDIENTE",
-            Format2(subtotal),
-            Format2(igv),
-            "0",
+            Format2(docuAdicional),
+            docuHash,
+            estadoSunat,
+            Format2(docuSubtotal),
+            Format2(docuIgv),
+            usuarioId,
             Format2(icbper),
-            Format2(subtotal),
-            Format2(0m),
-            "0"
+            Format2(docuGravada),
+            Format2(docuDescuento),
+            notaIdbr,
+            entidadBancaria,
+            nroOperacion,
+            Format2(efectivo),
+            Format2(deposito),
+            clienteRazon,
+            clienteRuc,
+            clienteDni,
+            direccionFiscal
         };
 
         var vdata = string.Join("|", headerFields) + "[";
@@ -213,8 +257,92 @@ public class NotaController : ControllerBase
                 Format2(item.DetalleImporte ?? 0m),
                 item.DetalleEstado ?? "PENDIENTE",
                 Format4(item.ValorUM ?? 0m),
-                "E" // AplicaINV
+                "S" // AplicaINV
             };
+            vdata += string.Join("|", detailFields);
+            if (i < detalleList.Count - 1) vdata += ";";
+        }
+        vdata += "[";
+        return vdata;
+    }
+
+    private string BuildEditarPayload(NotaPedido nota, IEnumerable<DetalleNota> detalles)
+    {
+        var detalleList = detalles == null ? new List<DetalleNota>() : new List<DetalleNota>(detalles);
+
+        var total = nota.NotaTotal ?? 0m;
+        var subtotal = nota.NotaSubtotal ?? 0m;
+        var movilidad = nota.NotaMovilidad ?? 0m;
+        var descuento = nota.NotaDescuento ?? 0m;
+        var adicional = nota.NotaAdicional ?? 0m;
+        var tarjeta = nota.NotaTarjeta ?? 0m;
+        var pagar = nota.NotaPagar ?? total;
+        var igv = total - subtotal;
+        var docuGravada = subtotal;
+        var docuDescuento = 0m;
+
+        var headerFields = new List<string?>
+        {
+            nota.NotaId > 0 ? nota.NotaId.ToString() : "0", // NotaId a editar
+            string.IsNullOrWhiteSpace(nota.NotaDocu) ? "BOLETA" : nota.NotaDocu!,
+            nota.ClienteId?.ToString(),
+            nota.NotaUsuario,
+            nota.NotaFormaPago,
+            nota.NotaCondicion,
+            nota.NotaDireccion,
+            nota.NotaTelefono,
+            Format2(subtotal),
+            Format2(movilidad),
+            Format2(descuento),
+            Format2(total),
+            Format2(adicional),
+            Format2(tarjeta),
+            Format2(pagar),
+            nota.CompaniaId?.ToString(),
+            nota.NotaEntrega,
+            string.IsNullOrWhiteSpace(nota.ModificadoPor) ? nota.NotaUsuario : nota.ModificadoPor,
+            nota.NotaSerie,
+            nota.NotaNumero,
+            string.Empty, // Aviso
+            Format2(nota.NotaGanancia ?? 0m),
+            Letras.enletras(total.ToString("N2")) + "  SOLES",
+            Format2(0m), // DocuAdicional
+            nota.NotaConcepto,
+            Format2(nota.ICBPER ?? 0m),
+            Format2(docuGravada),
+            Format2(docuDescuento),
+            nota.CajaId?.ToString() ?? "0", // UsuarioId en SP, usamos CajaId/0 si no disponible
+            Format2(igv),
+            string.IsNullOrWhiteSpace(nota.EntidadBancaria) ? "-" : nota.EntidadBancaria,
+            nota.NroOperacion ?? string.Empty,
+            Format2(nota.Efectivo ?? pagar),
+            Format2(nota.Deposito ?? 0m),
+            string.Empty, // ClienteRazon
+            string.Empty, // ClienteRuc
+            string.Empty, // ClienteDni
+            string.Empty  // DireccionFiscal
+        };
+
+        var vdata = string.Join("|", headerFields) + "[";
+
+        for (int i = 0; i < detalleList.Count; i++)
+        {
+            var item = detalleList[i];
+            var detailFields = new[]
+            {
+                item.DetalleId > 0 ? item.DetalleId.ToString() : "0",
+                Convert.ToInt32(item.IdProducto ?? 0).ToString(),
+                string.Empty, // CodigoPro (no disponible)
+                Format2(item.DetalleCantidad ?? 0m),
+                item.DetalleUm ?? string.Empty,
+                item.DetalleDescripcion ?? string.Empty,
+                Format4(item.DetalleCosto ?? 0m),
+                Format2(item.DetallePrecio ?? 0m),
+            Format2(item.DetalleImporte ?? 0m),
+            item.DetalleEstado ?? "PENDIENTE",
+            Format4(item.ValorUM ?? 0m),
+            "E"
+        };
             vdata += string.Join("|", detailFields);
             if (i < detalleList.Count - 1) vdata += ";";
         }
@@ -270,6 +398,15 @@ public class NotaController : ControllerBase
         var docuDescuento = GetFirstDecimal(res, 0m, "DocuDescuento");
         var notaIdbr = GetFirstString(res, "NotaIDBR", "NotaIdbr", "IDBR");
         if (string.IsNullOrWhiteSpace(notaIdbr)) notaIdbr = "0";
+        var entidadBancaria = GetFirstString(res, "EntidadBancaria");
+        if (string.IsNullOrWhiteSpace(entidadBancaria)) entidadBancaria = "-";
+        var nroOperacion = GetFirstString(res, "NroOperacion", "NumeroOperacion");
+        var efectivo = GetFirstDecimal(res, pagar, "Efectivo");
+        var deposito = GetFirstDecimal(res, 0m, "Deposito");
+        var clienteRazon = GetFirstString(res, "ClienteRazon", "ClienteRazonSocial", "RazonSocial");
+        var clienteRuc = GetFirstString(res, "ClienteRuc", "Ruc");
+        var clienteDni = GetFirstString(res, "ClienteDni", "Dni");
+        var direccionFiscal = GetFirstString(res, "DireccionFiscal", "ClienteDireccion", "Direccion");
 
         var headerFields = new List<string?>
         {
@@ -306,7 +443,15 @@ public class NotaController : ControllerBase
             Format2(icbper),
             Format2(docuGravada),
             Format2(docuDescuento),
-            notaIdbr
+            notaIdbr,
+            entidadBancaria,
+            nroOperacion,
+            Format2(efectivo),
+            Format2(deposito),
+            clienteRazon,
+            clienteRuc,
+            clienteDni,
+            direccionFiscal
         };
 
         var vdata = string.Join("|", headerFields) + "[";
@@ -340,6 +485,127 @@ public class NotaController : ControllerBase
 
         vdata += "[";
         Console.WriteLine("aramirez DES: " + vdata);
+        return vdata;
+    }
+
+    private string BuildEditarPayload(JsonElement body)
+    {
+        string json = JsonSerializer.Serialize(body);
+        dynamic res = JObject.Parse(json);
+        dynamic producto = (JObject)res["requestDetalle"];
+
+        var notaId = GetFirstDecimal(res, 0m, "NotaId", "NotaIDBR", "NotaIdbr", "IDBR");
+        var docu = GetFirstString(res, "Documento", "NotaDocu", "Docu");
+        if (string.IsNullOrWhiteSpace(docu)) docu = "BOLETA";
+        var clienteId = GetFirstString(res, "ClienteId");
+        var usuario = GetFirstString(res, "Usuario", "NotaUsuario");
+        var formaPago = GetFirstString(res, "FormaPago", "NotaFormaPago");
+        var condicion = GetFirstString(res, "Condicion", "NotaCondicion");
+        var direccion = GetFirstString(res, "Direccion", "NotaDireccion");
+        var telefono = GetFirstString(res, "Telefono", "NotaTelefono");
+        var subtotal = GetFirstDecimal(res, 0m, "SubTotal", "NotaSubtotal", "DocuSubtotal", "DocuGravada");
+        var movilidad = GetFirstDecimal(res, 0m, "Movilidad", "NotaMovilidad");
+        var descuento = GetFirstDecimal(res, 0m, "Descuento", "NotaDescuento", "DocuDescuento");
+        var total = GetFirstDecimal(res, 0m, "Total", "NotaTotal");
+        var adicional = GetFirstDecimal(res, 0m, "Adicional", "NotaAdicional", "DocuAdicional");
+        var tarjeta = GetFirstDecimal(res, 0m, "Tarjeta", "NotaTarjeta");
+        var pagar = GetFirstDecimal(res, total, "Pagar", "NotaPagar", "PagoTotal");
+        var companiaId = GetFirstString(res, "CompaniaId");
+        var entrega = GetFirstString(res, "Entrega", "NotaEntrega");
+        var modificadoPor = GetFirstString(res, "ModificadoPor", "UsuarioModifica", "NotaUsuario");
+        var serie = GetFirstString(res, "NotaSerie", "Serie");
+        var numero = GetFirstString(res, "NotaNumero", "Numero");
+        var aviso = GetFirstString(res, "Aviso");
+        var ganancia = GetFirstDecimal(res, 0m, "Ganancia", "NotaGanancia");
+        var letra = Letras.enletras(total.ToString("N2")) + "  SOLES";
+        var icbper = GetFirstDecimal(res, 0m, "ICBPER");
+        var docuGravada = GetFirstDecimal(res, subtotal, "DocuGravada", "NotaSubtotal", "SubTotal");
+        var docuDescuento = GetFirstDecimal(res, 0m, "DocuDescuento", "NotaDescuento");
+        var usuarioId = GetFirstString(res, "UsuarioId", "CajaId");
+        var igv = GetFirstDecimal(res, total - subtotal, "IGV", "DocuIGV");
+        var entidadBancaria = GetFirstString(res, "EntidadBancaria");
+        if (string.IsNullOrWhiteSpace(entidadBancaria)) entidadBancaria = "-";
+        var nroOperacion = GetFirstString(res, "NroOperacion", "NumeroOperacion");
+        var efectivo = GetFirstDecimal(res, pagar, "Efectivo");
+        var deposito = GetFirstDecimal(res, 0m, "Deposito");
+        var clienteRazon = GetFirstString(res, "ClienteRazon", "ClienteRazonSocial", "RazonSocial");
+        var clienteRuc = GetFirstString(res, "ClienteRuc", "Ruc");
+        var clienteDni = GetFirstString(res, "ClienteDni", "Dni");
+        var direccionFiscal = GetFirstString(res, "DireccionFiscal", "ClienteDireccion", "Direccion");
+
+        var headerFields = new List<string?>
+        {
+            notaId.ToString(),
+            docu,
+            clienteId,
+            usuario,
+            formaPago,
+            condicion,
+            direccion,
+            telefono,
+            Format2(subtotal),
+            Format2(movilidad),
+            Format2(descuento),
+            Format2(total),
+            Format2(adicional),
+            Format2(tarjeta),
+            Format2(pagar),
+            companiaId,
+            entrega,
+            modificadoPor,
+            serie,
+            numero,
+            aviso,
+            Format2(ganancia),
+            letra,
+            Format2(0m), // DocuAdicional
+            GetFirstString(res, "NotaConcepto", "Concepto"),
+            Format2(icbper),
+            Format2(docuGravada),
+            Format2(docuDescuento),
+            string.IsNullOrWhiteSpace(usuarioId) ? "0" : usuarioId,
+            Format2(igv),
+            entidadBancaria,
+            nroOperacion,
+            Format2(efectivo),
+            Format2(deposito),
+            clienteRazon,
+            clienteRuc,
+            clienteDni,
+            direccionFiscal
+        };
+
+        var vdata = string.Join("|", headerFields) + "[";
+
+        var count = Convert.ToInt32(GetFirstDecimal(res, 0m, "Items"));
+        for (int i = 0; i < count; i++)
+        {
+            var fila = i.ToString();
+            var item = producto[fila];
+            var detailFields = new[]
+            {
+                Convert.ToInt32(GetFirstDecimal(item, 0m, "DetalleId", "detalleId")).ToString(),
+                Convert.ToInt32(GetFirstDecimal(item, 0m, "productId", "IdProducto")).ToString(),
+                GetFirstString(item, "codigoPro", "CodigoPro", "codigo", "Codigo"),
+                Format2(GetFirstDecimal(item, 0m, "cantidad", "DetalleCantidad")),
+                GetFirstString(item, "unidad", "DetalleUm"),
+                GetFirstString(item, "producto", "DetalleDescripcion"),
+                Format4(GetFirstDecimal(item, 0m, "costo", "DetalleCosto")),
+                Format2(GetFirstDecimal(item, 0m, "precio", "DetallePrecio")),
+                Format2(GetFirstDecimal(item, 0m, "importe", "DetalleImporte")),
+                string.IsNullOrWhiteSpace(GetFirstString(item, "DetalleEstado", "estado"))
+                    ? "PENDIENTE"
+                    : GetFirstString(item, "DetalleEstado", "estado"),
+                Format4(GetFirstDecimal(item, 0m, "valorUM", "ValorUM")),
+                string.IsNullOrWhiteSpace(GetFirstString(item, "AplicaINV", "aplicaInv", "aplicaINV"))
+                    ? "E"
+                    : GetFirstString(item, "AplicaINV", "aplicaInv", "aplicaINV")
+            };
+            vdata += string.Join("|", detailFields);
+            if (i < count - 1) vdata += ";";
+        }
+
+        vdata += "[";
         return vdata;
     }
 
