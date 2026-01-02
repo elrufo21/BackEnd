@@ -9,7 +9,6 @@ public class NotaPedido
     public string? NotaUsuario { get; set; }
     public string? NotaFormaPago { get; set; }
     public string? NotaCondicion { get; set; }
-    public int? NotaDias { get; set; }
     public DateTime? NotaFechaPago { get; set; }
     public string? NotaDireccion { get; set; }
     public string? NotaTelefono { get; set; }

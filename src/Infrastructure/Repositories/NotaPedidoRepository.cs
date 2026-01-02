@@ -108,7 +108,6 @@ public class NotaPedidoRepository : INotaPedido
                                     NotaUsuario,
                                     NotaFormaPago,
                                     NotaCondicion,
-                                    NotaDias,
                                     NotaFechaPago,
                                     NotaDireccion,
                                     NotaTelefono,
@@ -159,7 +158,6 @@ public class NotaPedidoRepository : INotaPedido
                            NotaUsuario,
                            NotaFormaPago,
                            NotaCondicion,
-                           NotaDias,
                            NotaFechaPago,
                            NotaDireccion,
                            NotaTelefono,
@@ -268,7 +266,6 @@ public class NotaPedidoRepository : INotaPedido
                                            NotaUsuario = @NotaUsuario,
                                            NotaFormaPago = @NotaFormaPago,
                                            NotaCondicion = @NotaCondicion,
-                                           NotaDias = @NotaDias,
                                            NotaFechaPago = @NotaFechaPago,
                                            NotaDireccion = @NotaDireccion,
                                            NotaTelefono = @NotaTelefono,
@@ -315,7 +312,6 @@ public class NotaPedidoRepository : INotaPedido
                                              NotaUsuario,
                                              NotaFormaPago,
                                              NotaCondicion,
-                                             NotaDias,
                                              NotaFechaPago,
                                              NotaDireccion,
                                              NotaTelefono,
@@ -346,13 +342,12 @@ public class NotaPedidoRepository : INotaPedido
                                        VALUES (@NotaDocu,
                                                @ClienteId,
                                                @NotaFecha,
-                                               @NotaUsuario,
-                                               @NotaFormaPago,
-                                               @NotaCondicion,
-                                               @NotaDias,
-                                               @NotaFechaPago,
-                                               @NotaDireccion,
-                                               @NotaTelefono,
+                                                @NotaUsuario,
+                                                @NotaFormaPago,
+                                                @NotaCondicion,
+                                                @NotaFechaPago,
+                                                @NotaDireccion,
+                                                @NotaTelefono,
                                                @NotaSubtotal,
                                                @NotaMovilidad,
                                                @NotaDescuento,
@@ -449,7 +444,6 @@ public class NotaPedidoRepository : INotaPedido
         AddParam(cmd, "@NotaUsuario", notaPedido.NotaUsuario);
         AddParam(cmd, "@NotaFormaPago", notaPedido.NotaFormaPago);
         AddParam(cmd, "@NotaCondicion", notaPedido.NotaCondicion);
-        AddParam(cmd, "@NotaDias", notaPedido.NotaDias);
         AddParam(cmd, "@NotaFechaPago", notaPedido.NotaFechaPago);
         AddParam(cmd, "@NotaDireccion", notaPedido.NotaDireccion);
         AddParam(cmd, "@NotaTelefono", notaPedido.NotaTelefono);
@@ -491,12 +485,11 @@ public class NotaPedidoRepository : INotaPedido
             NotaId = Convert.ToInt64(reader["NotaId"]),
             NotaDocu = reader["NotaDocu"].ToString(),
             ClienteId = reader["ClienteId"] == DBNull.Value ? null : Convert.ToInt64(reader["ClienteId"]),
-            NotaFecha = reader["NotaFecha"] == DBNull.Value ? null : Convert.ToDateTime(reader["NotaFecha"]),
+            NotaFecha = ToNullableDate(reader["NotaFecha"]),
             NotaUsuario = reader["NotaUsuario"].ToString(),
             NotaFormaPago = reader["NotaFormaPago"].ToString(),
             NotaCondicion = reader["NotaCondicion"].ToString(),
-            NotaDias = reader["NotaDias"] == DBNull.Value ? null : Convert.ToInt32(reader["NotaDias"]),
-            NotaFechaPago = reader["NotaFechaPago"] == DBNull.Value ? null : Convert.ToDateTime(reader["NotaFechaPago"]),
+            NotaFechaPago = ToNullableDate(reader["NotaFechaPago"]),
             NotaDireccion = reader["NotaDireccion"].ToString(),
             NotaTelefono = reader["NotaTelefono"].ToString(),
             NotaSubtotal = reader["NotaSubtotal"] == DBNull.Value ? null : Convert.ToDecimal(reader["NotaSubtotal"]),
@@ -512,7 +505,7 @@ public class NotaPedidoRepository : INotaPedido
             CompaniaId = reader["CompaniaId"] == DBNull.Value ? null : Convert.ToInt32(reader["CompaniaId"]),
             NotaEntrega = reader["NotaEntrega"].ToString(),
             ModificadoPor = reader["ModificadoPor"].ToString(),
-            FechaEdita = reader["FechaEdita"] == DBNull.Value ? null : Convert.ToDateTime(reader["FechaEdita"]),
+            FechaEdita = ToNullableDate(reader["FechaEdita"]),
             NotaConcepto = reader["NotaConcepto"].ToString(),
             NotaSerie = reader["NotaSerie"].ToString(),
             NotaNumero = reader["NotaNumero"].ToString(),
@@ -524,6 +517,25 @@ public class NotaPedidoRepository : INotaPedido
             Efectivo = reader["Efectivo"] == DBNull.Value ? null : Convert.ToDecimal(reader["Efectivo"]),
             Deposito = reader["Deposito"] == DBNull.Value ? null : Convert.ToDecimal(reader["Deposito"])
         };
+    }
+
+    private static DateTime? ToNullableDate(object? value)
+    {
+        if (value == null || value == DBNull.Value) return null;
+        if (value is string s)
+        {
+            if (string.IsNullOrWhiteSpace(s)) return null;
+            if (DateTime.TryParse(s, out var parsed)) return parsed;
+            return null;
+        }
+        try
+        {
+            return Convert.ToDateTime(value);
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private static DetalleNota MapDetalle(SqlDataReader reader)

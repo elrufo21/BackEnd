@@ -354,7 +354,9 @@ public class NotaController : ControllerBase
     {
         string json = JsonSerializer.Serialize(body);
         dynamic res = JObject.Parse(json);
-        dynamic producto = (JObject)res["requestDetalle"];
+        var productoToken = res["requestDetalle"] ?? res["requestdetalle"] ?? res["detalles"] ?? res["Detalles"];
+        var productoArray = productoToken as JArray;
+        var producto = productoToken as JObject ?? new JObject();
 
         Console.WriteLine("aramirez Total:" + GetFirstDecimal(res, 0m, "Total", "NotaTotal"));
         Console.WriteLine("aramirez Items:" + GetFirstDecimal(res, 0m, "Items"));
@@ -457,10 +459,25 @@ public class NotaController : ControllerBase
         var vdata = string.Join("|", headerFields) + "[";
 
         var count = Convert.ToInt32(GetFirstDecimal(res, 0m, "Items"));
+        if (count == 0)
+        {
+            if (productoArray != null) count = productoArray.Count;
+            else count = producto.Properties().Count();
+        }
         for (int i = 0; i < count; i++)
         {
-            var fila = i.ToString();
-            var item = producto[fila];
+            JToken? itemToken = null;
+            if (productoArray != null)
+            {
+                if (i < productoArray.Count) itemToken = productoArray[i];
+            }
+            else
+            {
+                var fila = i.ToString();
+                itemToken = producto[fila];
+            }
+            if (itemToken == null) continue;
+            var item = itemToken;
             var detailFields = new[]
             {
                 Convert.ToInt32(GetFirstDecimal(item, 0m, "productId", "IdProducto")).ToString(),
@@ -492,7 +509,9 @@ public class NotaController : ControllerBase
     {
         string json = JsonSerializer.Serialize(body);
         dynamic res = JObject.Parse(json);
-        dynamic producto = (JObject)res["requestDetalle"];
+        var productoToken = res["requestDetalle"] ?? res["requestdetalle"] ?? res["detalles"] ?? res["Detalles"];
+        var productoArray = productoToken as JArray;
+        var producto = productoToken as JObject ?? new JObject();
 
         var notaId = GetFirstDecimal(res, 0m, "NotaId", "NotaIDBR", "NotaIdbr", "IDBR");
         var docu = GetFirstString(res, "Documento", "NotaDocu", "Docu");
@@ -575,20 +594,40 @@ public class NotaController : ControllerBase
             direccionFiscal
         };
 
-        var vdata = string.Join("|", headerFields) + "[";
+        var detailParts = new List<string>();
+        var guiaParts = new List<string>();
 
         var count = Convert.ToInt32(GetFirstDecimal(res, 0m, "Items"));
+        if (count == 0)
+        {
+            if (productoArray != null) count = productoArray.Count;
+            else count = producto.Properties().Count();
+        }
         for (int i = 0; i < count; i++)
         {
-            var fila = i.ToString();
-            var item = producto[fila];
+            JToken? itemToken = null;
+            if (productoArray != null)
+            {
+                if (i < productoArray.Count) itemToken = productoArray[i];
+            }
+            else
+            {
+                var fila = i.ToString();
+                itemToken = producto[fila];
+            }
+            if (itemToken == null) continue;
+            var item = itemToken;
+            var cantidad = GetFirstDecimal(item, 0m, "cantidad", "DetalleCantidad");
+            var valorUm = GetFirstDecimal(item, 0m, "valorUM", "ValorUM");
+            var um = GetFirstString(item, "unidad", "DetalleUm");
+
             var detailFields = new[]
             {
                 Convert.ToInt32(GetFirstDecimal(item, 0m, "DetalleId", "detalleId")).ToString(),
                 Convert.ToInt32(GetFirstDecimal(item, 0m, "productId", "IdProducto")).ToString(),
                 GetFirstString(item, "codigoPro", "CodigoPro", "codigo", "Codigo"),
-                Format2(GetFirstDecimal(item, 0m, "cantidad", "DetalleCantidad")),
-                GetFirstString(item, "unidad", "DetalleUm"),
+                Format2(cantidad),
+                um,
                 GetFirstString(item, "producto", "DetalleDescripcion"),
                 Format4(GetFirstDecimal(item, 0m, "costo", "DetalleCosto")),
                 Format2(GetFirstDecimal(item, 0m, "precio", "DetallePrecio")),
@@ -596,16 +635,34 @@ public class NotaController : ControllerBase
                 string.IsNullOrWhiteSpace(GetFirstString(item, "DetalleEstado", "estado"))
                     ? "PENDIENTE"
                     : GetFirstString(item, "DetalleEstado", "estado"),
-                Format4(GetFirstDecimal(item, 0m, "valorUM", "ValorUM")),
+                Format4(valorUm),
                 string.IsNullOrWhiteSpace(GetFirstString(item, "AplicaINV", "aplicaInv", "aplicaINV"))
                     ? "E"
                     : GetFirstString(item, "AplicaINV", "aplicaInv", "aplicaINV")
             };
-            vdata += string.Join("|", detailFields);
-            if (i < count - 1) vdata += ";";
+            detailParts.Add(string.Join("|", detailFields));
+
+            var action = GetFirstString(item, "action", "Action");
+            if (!string.IsNullOrWhiteSpace(action))
+            {
+                // CantidadU: se envía 1 para que el SP calcule cantidadSalida = CantidadA * 1 * ValorUMU.
+                var guiaFields = new[]
+                {
+                    Format2(cantidad),
+                    Convert.ToInt32(GetFirstDecimal(item, 0m, "productId", "IdProducto")).ToString(),
+                    Format2(GetFirstDecimal(item, 1m, "cantidadU", "CantidadU")),
+                    um,
+                    Format4(valorUm),
+                    action
+                };
+                guiaParts.Add(string.Join("|", guiaFields));
+            }
         }
 
+        var vdata = string.Join("|", headerFields) + "[";
+        vdata += string.Join(";", detailParts);
         vdata += "[";
+        vdata += string.Join(";", guiaParts);
         return vdata;
     }
 
