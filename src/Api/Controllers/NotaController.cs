@@ -24,25 +24,32 @@ public class NotaController : ControllerBase
     [AllowAnonymous]
     [HttpGet("list", Name = "GetNotaList")]
     [ProducesResponseType(typeof(IReadOnlyList<EListaNota>), (int)HttpStatusCode.OK)]
-    public ActionResult<IReadOnlyList<EListaNota>> ListarNota()
+    public async Task<ActionResult<IReadOnlyList<EListaNota>>> ListarNota(
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 50,
+        CancellationToken cancellationToken = default)
     {
-        return Ok(_mediator.Listar());
+        return Ok(await _mediator.ListarAsync(page, pageSize, cancellationToken));
     }
 
     [AllowAnonymous]
     [HttpGet("crud", Name = "GetNotaPedidoCrud")]
     [ProducesResponseType(typeof(IReadOnlyList<NotaPedido>), (int)HttpStatusCode.OK)]
-    public ActionResult<IReadOnlyList<NotaPedido>> ListarNotaCrud([FromQuery] string? estado = null)
+    public async Task<ActionResult<IReadOnlyList<NotaPedido>>> ListarNotaCrud(
+        [FromQuery] string? estado = null,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 50,
+        CancellationToken cancellationToken = default)
     {
-        return Ok(_mediator.ListarCrud(estado));
+        return Ok(await _mediator.ListarCrudAsync(estado, page, pageSize, cancellationToken));
     }
 
     [AllowAnonymous]
     [HttpGet("{id:long}", Name = "GetNotaPedidoById")]
     [ProducesResponseType(typeof(NotaPedido), (int)HttpStatusCode.OK)]
-    public ActionResult<NotaPedido?> ObtenerNotaPedido(long id)
+    public async Task<ActionResult<NotaPedido?>> ObtenerNotaPedido(long id, CancellationToken cancellationToken)
     {
-        var nota = _mediator.ObtenerPorId(id);
+        var nota = await _mediator.ObtenerPorIdAsync(id, cancellationToken);
         if (nota is null) return NotFound();
         return Ok(nota);
     }
@@ -50,23 +57,27 @@ public class NotaController : ControllerBase
     [AllowAnonymous]
     [HttpGet("{id:long}/detalles", Name = "GetNotaPedidoDetalles")]
     [ProducesResponseType(typeof(IReadOnlyList<DetalleNota>), (int)HttpStatusCode.OK)]
-    public ActionResult<IReadOnlyList<DetalleNota>> ObtenerDetalles(long id)
+    public async Task<ActionResult<IReadOnlyList<DetalleNota>>> ObtenerDetalles(
+        long id,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 50,
+        CancellationToken cancellationToken = default)
     {
-        return Ok(_mediator.ListarDetalle(id));
+        return Ok(await _mediator.ListarDetalleAsync(id, page, pageSize, cancellationToken));
     }
 
-    [AllowAnonymous]
+    [Authorize]
     [HttpPost("register", Name = "RegisterNotaPedido")]
     [ProducesResponseType((int)HttpStatusCode.OK)]
-    public IActionResult RegistrarNotaPedido([FromBody] NotaPedido notaPedido)
+    public async Task<IActionResult> RegistrarNotaPedido([FromBody] NotaPedido notaPedido, CancellationToken cancellationToken)
     {
-        return Ok(_mediator.Insertar(notaPedido));
+        return Ok(await _mediator.InsertarAsync(notaPedido, cancellationToken));
     }
 
-    [AllowAnonymous]
+    [Authorize]
     [HttpPost("register-with-detail", Name = "RegisterNotaPedidoConDetalle")]
     [ProducesResponseType((int)HttpStatusCode.OK)]
-    public IActionResult RegistrarNotaPedidoConDetalle([FromBody] JsonElement body)
+    public async Task<IActionResult> RegistrarNotaPedidoConDetalle([FromBody] JsonElement body, CancellationToken cancellationToken)
     {
         if (body.ValueKind != JsonValueKind.Object)
         {
@@ -84,25 +95,25 @@ public class NotaController : ControllerBase
             }
             var detalles = request.Detalles ?? new List<DetalleNota>();
             var vdataNota = BuildOrdenPayload(request.Nota, detalles);
-            return Ok(_mediator.RegistrarOrden(vdataNota));
+            return Ok(await _mediator.RegistrarOrdenAsync(vdataNota, cancellationToken));
         }
 
         var vdata = BuildOrdenPayload(body);
-        return Ok(_mediator.RegistrarOrden(vdata));
+        return Ok(await _mediator.RegistrarOrdenAsync(vdata, cancellationToken));
     }
 
-    [AllowAnonymous]
+    [Authorize]
     [HttpDelete("{id:long}", Name = "EliminarNotaPedido")]
     [ProducesResponseType((int)HttpStatusCode.OK)]
-    public IActionResult EliminarNotaPedido(long id)
+    public async Task<IActionResult> EliminarNotaPedido(long id, CancellationToken cancellationToken)
     {
-        return Ok(_mediator.Eliminar(id));
+        return Ok(await _mediator.EliminarAsync(id, cancellationToken));
     }
 
     [AllowAnonymous]
     [HttpPost("crearOrden", Name = "CrearOrden")]
     [ProducesResponseType((int)HttpStatusCode.OK)]
-    public IActionResult RegistrarOrden(JsonElement body)
+    public async Task<IActionResult> RegistrarOrden(JsonElement body, CancellationToken cancellationToken)
     {
         if (body.ValueKind != JsonValueKind.Object)
         {
@@ -120,17 +131,17 @@ public class NotaController : ControllerBase
             }
             var detalles = request.Detalles ?? new List<DetalleNota>();
             var vdataNota = BuildOrdenPayload(request.Nota, detalles);
-            return Ok(_mediator.RegistrarOrden(vdataNota));
+            return Ok(await _mediator.RegistrarOrdenAsync(vdataNota, cancellationToken));
         }
 
         var vdata = BuildOrdenPayload(body);
-        return Ok(_mediator.RegistrarOrden(vdata));
+        return Ok(await _mediator.RegistrarOrdenAsync(vdata, cancellationToken));
     }
 
-    [AllowAnonymous]
+    [Authorize]
     [HttpPut("editarOrden", Name = "EditarOrden")]
     [ProducesResponseType((int)HttpStatusCode.OK)]
-    public IActionResult EditarOrden(JsonElement body)
+    public async Task<IActionResult> EditarOrden(JsonElement body, CancellationToken cancellationToken)
     {
         if (body.ValueKind != JsonValueKind.Object)
         {
@@ -148,11 +159,11 @@ public class NotaController : ControllerBase
             }
             var detalles = request.Detalles ?? new List<DetalleNota>();
             var vdataNota = BuildEditarPayload(request.Nota, detalles);
-            return Ok(_mediator.EditarOrden(vdataNota));
+            return Ok(await _mediator.EditarOrdenAsync(vdataNota, cancellationToken));
         }
 
         var vdata = BuildEditarPayload(body);
-        return Ok(_mediator.EditarOrden(vdata));
+        return Ok(await _mediator.EditarOrdenAsync(vdata, cancellationToken));
     }
 
     private string BuildOrdenPayload(NotaPedido nota, IEnumerable<DetalleNota> detalles)
@@ -358,9 +369,6 @@ public class NotaController : ControllerBase
         var productoArray = productoToken as JArray;
         var producto = productoToken as JObject ?? new JObject();
 
-        Console.WriteLine("aramirez Total:" + GetFirstDecimal(res, 0m, "Total", "NotaTotal"));
-        Console.WriteLine("aramirez Items:" + GetFirstDecimal(res, 0m, "Items"));
-        Console.WriteLine("aramirez Detalle:" + producto);
 
         var docu = GetFirstString(res, "Documento", "NotaDocu", "Docu");
         if (string.IsNullOrWhiteSpace(docu)) docu = "BOLETA";
@@ -501,7 +509,6 @@ public class NotaController : ControllerBase
         }
 
         vdata += "[";
-        Console.WriteLine("aramirez DES: " + vdata);
         return vdata;
     }
 

@@ -4,5 +4,5 @@ namespace Ecommerce.Application.Contracts.Usuarios;
 
 public interface IUsuario
 {
-    public AuthResponseA Login(EUser loginUser);
+    Task<AuthResponseA> LoginAsync(EUser loginUser, CancellationToken cancellationToken = default);
 }

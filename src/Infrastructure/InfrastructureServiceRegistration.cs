@@ -19,6 +19,7 @@ public static class InfrastructureServiceRegistration
     {
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped(typeof(IAsyncRepository<>), typeof(RepositoryBase<>));
+        services.AddScoped<AccesoDatos>();
 
         services.AddTransient<IAuthService, AuthService>();
 

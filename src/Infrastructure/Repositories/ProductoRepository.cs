@@ -1,7 +1,7 @@
 using System.Data;
 using Ecommerce.Application.Contracts.Productos;
 using Ecommerce.Domain;
-using Microsoft.AspNetCore.Builder;
+using Ecommerce.Infrastructure.Persistence;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 
@@ -10,97 +10,98 @@ namespace Ecommerce.Infrastructure.Persistence.Repositories;
 public class ProductoRepository : IProducto
 {
     private readonly string _connectionString;
-    AccesoDatos daSQL = new AccesoDatos();
-    private readonly AccesoDatos _accesoDatos = new();
+    private readonly AccesoDatos _accesoDatos;
 
-    public ProductoRepository()
+    public ProductoRepository(IConfiguration configuration, AccesoDatos accesoDatos)
     {
-        var builder = WebApplication.CreateBuilder();
-        _connectionString = builder.Configuration.GetConnectionString("DefaultConnection")!;
+        _connectionString = configuration.GetConnectionString("DefaultConnection")
+            ?? throw new InvalidOperationException("Missing connection string: DefaultConnection");
+        _accesoDatos = accesoDatos;
     }
 
-    public string Insertar(Producto producto)
+    public async Task<string> InsertarAsync(Producto producto, CancellationToken cancellationToken = default)
     {
-        string rpt = string.Empty;
-        string xvalue = string.Empty;
-        xvalue = producto.IdProducto + "|" + producto.IdSubLinea + "|" +
-        producto.ProductoCodigo?.Trim() + "|" + producto.ProductoNombre?.Trim() + "|" + 
-        producto.ProductoUM?.Trim() + "|" +Convert.ToDecimal(producto.ProductoCosto)+ "|" +Convert.ToDecimal(producto.ProductoVenta)+ "|" +
-        Convert.ToDecimal(producto.ProductoVentaB) + "|" + Convert.ToDecimal(producto.ProductoCantidad) + "|" +
-        producto.ProductoEstado + "|" +producto.ProductoUsuario+ "|" +
-        producto.ProductoImagen+ "|" + Convert.ToDecimal(producto.ValorCritico) + "|" +producto.AplicaINV;
-        rpt = daSQL.ejecutarComando("uspIngresarProducto", "@Data", xvalue);
-        if (string.IsNullOrEmpty(rpt)) rpt = "error";
-        return rpt;
+        var data = $"{producto.IdProducto}|{producto.IdSubLinea}|{producto.ProductoCodigo?.Trim()}|{producto.ProductoNombre?.Trim()}|{producto.ProductoUM?.Trim()}|{Convert.ToDecimal(producto.ProductoCosto)}|{Convert.ToDecimal(producto.ProductoVenta)}|{Convert.ToDecimal(producto.ProductoVentaB)}|{Convert.ToDecimal(producto.ProductoCantidad)}|{producto.ProductoEstado}|{producto.ProductoUsuario}|{producto.ProductoImagen}|{Convert.ToDecimal(producto.ValorCritico)}|{producto.AplicaINV}";
+        var result = await _accesoDatos.EjecutarComandoAsync("uspIngresarProducto", "@Data", data, cancellationToken);
+        return string.IsNullOrWhiteSpace(result) ? "error" : result;
     }
 
-    public bool Eliminar(long id)
+    public async Task<bool> EliminarAsync(long id, CancellationToken cancellationToken = default)
     {
         const string sql = "uspEliminarProducto";
-        using var con = new SqlConnection(_connectionString);
-        using var cmd = new SqlCommand(sql, con);
-        cmd.CommandTimeout = 300;
-        cmd.CommandType = CommandType.StoredProcedure;
+        await using var con = new SqlConnection(_connectionString);
+        await using var cmd = new SqlCommand(sql, con)
+        {
+            CommandTimeout = 300,
+            CommandType = CommandType.StoredProcedure
+        };
         cmd.Parameters.AddWithValue("@Id", id);
-        if (con.State == ConnectionState.Open) con.Close();
-        con.Open();
-        return cmd.ExecuteNonQuery() > 0;
+        await con.OpenAsync(cancellationToken);
+        return await cmd.ExecuteNonQueryAsync(cancellationToken) > 0;
     }
 
-    public Producto? ObtenerPorId(long id)
+    public async Task<Producto?> ObtenerPorIdAsync(long id, CancellationToken cancellationToken = default)
     {
-        const string sql = "uspObtenerProductoPorId";
-        using var con = new SqlConnection(_connectionString);
-        using var cmd = new SqlCommand(sql, con);
-        cmd.CommandTimeout = 300;
-        cmd.CommandType = CommandType.StoredProcedure;
+        const string sql = """
+            SELECT IdProducto, IdSubLinea, ProductoCodigo, ProductoNombre, ProductoUM, ProductoCosto,
+                   ProductoVenta, ProductoVentaB, ProductoCantidad, ProductoEstado, ProductoUsuario,
+                   ProductoFecha, ProductoImagen, ValorCritico, AplicaINV
+            FROM Producto
+            WHERE IdProducto = @Id;
+            """;
+
+        await using var con = new SqlConnection(_connectionString);
+        await using var cmd = new SqlCommand(sql, con);
         cmd.Parameters.AddWithValue("@Id", id);
-        if (con.State == ConnectionState.Open) con.Close();
-        con.Open();
-        using var reader = cmd.ExecuteReader();
-        return reader.Read() ? MapProducto(reader) : null;
+        await con.OpenAsync(cancellationToken);
+        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken) ? MapProducto(reader) : null;
     }
 
-    public IReadOnlyList<Producto> ListarCrud(string? estado = "ACTIVO")
+    public async Task<IReadOnlyList<Producto>> ListarCrudAsync(string? estado = "ACTIVO", int page = 1, int pageSize = 50, CancellationToken cancellationToken = default)
     {
-        var lista = new List<Producto>();
-        const string sql = "uspListarProducto";
-        using var con = new SqlConnection(_connectionString);
-        using var cmd = new SqlCommand(sql, con);
-        cmd.CommandTimeout = 300;
-        cmd.CommandType = CommandType.StoredProcedure;
+        (page, pageSize) = NormalizePagination(page, pageSize);
+
+        const string sql = """
+            SELECT IdProducto, IdSubLinea, ProductoCodigo, ProductoNombre, ProductoUM, ProductoCosto,
+                   ProductoVenta, ProductoVentaB, ProductoCantidad, ProductoEstado, ProductoUsuario,
+                   ProductoFecha, ProductoImagen, ValorCritico, AplicaINV
+            FROM Producto
+            WHERE (@Estado IS NULL OR ProductoEstado = @Estado)
+            ORDER BY IdProducto DESC
+            OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;
+            """;
+
+        await using var con = new SqlConnection(_connectionString);
+        await using var cmd = new SqlCommand(sql, con);
         cmd.Parameters.AddWithValue("@Estado", (object?)estado ?? DBNull.Value);
-        if (con.State == ConnectionState.Open) con.Close();
-        con.Open();
-        using var reader = cmd.ExecuteReader();
-        while (reader.Read())
+        cmd.Parameters.AddWithValue("@Offset", (page - 1) * pageSize);
+        cmd.Parameters.AddWithValue("@PageSize", pageSize);
+        await con.OpenAsync(cancellationToken);
+        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+
+        var lista = new List<Producto>();
+        while (await reader.ReadAsync(cancellationToken))
         {
             lista.Add(MapProducto(reader));
         }
         return lista;
     }
 
-    public IReadOnlyList<EListaProducto> Listar()
+    public async Task<IReadOnlyList<EListaProducto>> ListarAsync(int page = 1, int pageSize = 50, CancellationToken cancellationToken = default)
     {
-        var lista = new List<EListaProducto>();
-        var rpt = _accesoDatos.ejecutarComando("uspListaWebProducto");
-        if (!string.IsNullOrEmpty(rpt))
-        {
-            lista = Cadena.AlistaCamposPro(rpt);
-        }
-        return lista;
+        var result = await _accesoDatos.EjecutarComandoAsync("uspListaWebProducto", cancellationToken: cancellationToken);
+        var lista = string.IsNullOrWhiteSpace(result) ? new List<EListaProducto>() : Cadena.AlistaCamposPro(result);
+        return ApplyPagination(lista, page, pageSize);
     }
 
-    public IReadOnlyList<EListaProducto> BuscarProducto(string nombre)
+    public async Task<IReadOnlyList<EListaProducto>> BuscarProductoAsync(string nombre, int page = 1, int pageSize = 50, CancellationToken cancellationToken = default)
     {
-        var lista = new List<EListaProducto>();
-        var rpt = _accesoDatos.ejecutarComando("uspBuscaWebProducto", "@Descripcion", nombre);
-        if (!string.IsNullOrEmpty(rpt))
-        {
-            lista = Cadena.AlistaCamposPro(rpt);
-        }
-        return lista;
+        var result = await _accesoDatos.EjecutarComandoAsync("uspBuscaWebProducto", "@Descripcion", nombre, cancellationToken);
+        var lista = string.IsNullOrWhiteSpace(result) ? new List<EListaProducto>() : Cadena.AlistaCamposPro(result);
+        return ApplyPagination(lista, page, pageSize);
     }
+
     private static Producto MapProducto(SqlDataReader reader)
     {
         return new Producto
@@ -121,5 +122,18 @@ public class ProductoRepository : IProducto
             ValorCritico = reader["ValorCritico"] == DBNull.Value ? null : Convert.ToDecimal(reader["ValorCritico"]),
             AplicaINV = reader["AplicaINV"]?.ToString()
         };
+    }
+
+    private static IReadOnlyList<EListaProducto> ApplyPagination(IReadOnlyList<EListaProducto> source, int page, int pageSize)
+    {
+        (page, pageSize) = NormalizePagination(page, pageSize);
+        return source.Skip((page - 1) * pageSize).Take(pageSize).ToList();
+    }
+
+    private static (int page, int pageSize) NormalizePagination(int page, int pageSize)
+    {
+        var normalizedPage = page < 1 ? 1 : page;
+        var normalizedPageSize = pageSize < 1 ? 1 : Math.Min(pageSize, 100);
+        return (normalizedPage, normalizedPageSize);
     }
 }

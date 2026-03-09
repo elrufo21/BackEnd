@@ -17,36 +17,39 @@ public class FeriadosController : ControllerBase
         _mediator = mediator;
     }
 
-    [AllowAnonymous]
+    [Authorize]
     [HttpPost("register", Name = "RegisterFeriado")]
     [ProducesResponseType((int)HttpStatusCode.OK)]
-    public IActionResult RegisterFeriado([FromBody] Feriado feriado)
+    public async Task<IActionResult> RegisterFeriado([FromBody] Feriado feriado, CancellationToken cancellationToken)
     {
-        return Ok(_mediator.Insertar(feriado));
+        return Ok(await _mediator.InsertarAsync(feriado, cancellationToken));
     }
 
-    [AllowAnonymous]
+    [Authorize]
     [HttpDelete("{id:int}", Name = "EliminarFeriado")]
     [ProducesResponseType((int)HttpStatusCode.OK)]
-    public IActionResult EliminarFeriado(int id)
+    public async Task<IActionResult> EliminarFeriado(int id, CancellationToken cancellationToken)
     {
-        return Ok(_mediator.Eliminar(id));
+        return Ok(await _mediator.EliminarAsync(id, cancellationToken));
     }
 
     [AllowAnonymous]
     [HttpGet("list", Name = "GetFeriadoList")]
     [ProducesResponseType(typeof(IReadOnlyList<Feriado>), (int)HttpStatusCode.OK)]
-    public ActionResult<IReadOnlyList<Feriado>> GetFeriadoList()
+    public async Task<ActionResult<IReadOnlyList<Feriado>>> GetFeriadoList(
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 50,
+        CancellationToken cancellationToken = default)
     {
-        return Ok(_mediator.Listar());
+        return Ok(await _mediator.ListarAsync(page, pageSize, cancellationToken));
     }
 
     [AllowAnonymous]
     [HttpGet("{id:int}", Name = "GetFeriadoById")]
     [ProducesResponseType(typeof(Feriado), (int)HttpStatusCode.OK)]
-    public ActionResult<Feriado?> GetFeriadoById(int id)
+    public async Task<ActionResult<Feriado?>> GetFeriadoById(int id, CancellationToken cancellationToken)
     {
-        var feriado = _mediator.ObtenerPorId(id);
+        var feriado = await _mediator.ObtenerPorIdAsync(id, cancellationToken);
         if (feriado is null) return NotFound();
         return Ok(feriado);
     }

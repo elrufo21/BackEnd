@@ -17,27 +17,30 @@ public class AreaController : ControllerBase
         _mediator = mediator;
     }
 
-    [AllowAnonymous]
+    [Authorize]
     [HttpPost("registerarea", Name = "RegisterArea")]
     [ProducesResponseType((int)HttpStatusCode.OK)]
-    public IActionResult RegisterArea([FromBody] Area area)
+    public async Task<IActionResult> RegisterArea([FromBody] Area area, CancellationToken cancellationToken)
     {
-        return Ok(_mediator.Insertar(area));
+        return Ok(await _mediator.InsertarAsync(area, cancellationToken));
     }
 
-    [AllowAnonymous]
+    [Authorize]
     [HttpDelete("{id}", Name = "EliminarArea")]
     [ProducesResponseType((int)HttpStatusCode.OK)]
-    public IActionResult EliminarArea(int id)
+    public async Task<IActionResult> EliminarArea(int id, CancellationToken cancellationToken)
     {
-        return Ok(_mediator.Eliminar(id));
+        return Ok(await _mediator.EliminarAsync(id, cancellationToken));
     }
 
     [AllowAnonymous]
     [HttpGet("list", Name = "GetAreaList")]
     [ProducesResponseType(typeof(IReadOnlyList<EGeneral>), (int)HttpStatusCode.OK)]
-    public ActionResult<IReadOnlyList<EGeneral>> GetAreaList()
+    public async Task<ActionResult<IReadOnlyList<EGeneral>>> GetAreaList(
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 50,
+        CancellationToken cancellationToken = default)
     {
-        return Ok(_mediator.Listar());
+        return Ok(await _mediator.ListarAsync(page, pageSize, cancellationToken));
     }
 }

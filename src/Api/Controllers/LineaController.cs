@@ -17,26 +17,29 @@ public class LineaController : ControllerBase
         _mediator = mediador;
     }
 
-    [AllowAnonymous]
+    [Authorize]
     [HttpPost("registerlinea", Name = "Registerlinea")]
     [ProducesResponseType((int)HttpStatusCode.OK)]
-    public IActionResult Registerlinea([FromBody] Linea linea)
+    public async Task<IActionResult> Registerlinea([FromBody] Linea linea, CancellationToken cancellationToken)
     {
-        return Ok(_mediator.Insertar(linea));
+        return Ok(await _mediator.InsertarAsync(linea, cancellationToken));
     }
     
-    [AllowAnonymous]
+    [Authorize]
     [HttpDelete("{id}", Name = "EliminarLinea")]
     [ProducesResponseType((int)HttpStatusCode.OK)]
-    public IActionResult Eliminarlinea(int id)
+    public async Task<IActionResult> Eliminarlinea(int id, CancellationToken cancellationToken)
     {
-        return Ok(_mediator.Eliminar(id));
+        return Ok(await _mediator.EliminarAsync(id, cancellationToken));
     }
     [AllowAnonymous]
     [HttpGet("list", Name = "GetLineaList")]
     [ProducesResponseType(typeof(IReadOnlyList<EGeneral>), (int)HttpStatusCode.OK)]
-    public ActionResult<IReadOnlyList<EGeneral>> GetLineaList()
+    public async Task<ActionResult<IReadOnlyList<EGeneral>>> GetLineaList(
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 50,
+        CancellationToken cancellationToken = default)
     {
-        return Ok(_mediator.Listar());
+        return Ok(await _mediator.ListarAsync(page, pageSize, cancellationToken));
     }
 }

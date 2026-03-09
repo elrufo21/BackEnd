@@ -19,62 +19,70 @@ public class ProveedorController : ControllerBase
         _cuentaProveedor = cuentaProveedor;
     }
 
-    [AllowAnonymous]
+    [Authorize]
     [HttpPost("register", Name = "RegisterProveedor")]
     [ProducesResponseType((int)HttpStatusCode.OK)]
-    public IActionResult RegisterProveedor([FromBody] Proveedor proveedor)
+    public async Task<IActionResult> RegisterProveedor([FromBody] Proveedor proveedor, CancellationToken cancellationToken)
     {
-        return Ok(_mediator.Insertar(proveedor));
+        return Ok(await _mediator.InsertarAsync(proveedor, cancellationToken));
     }
         
-    [AllowAnonymous]
+    [Authorize]
     [HttpDelete("{id:long}", Name = "EliminarProveedor")]
     [ProducesResponseType((int)HttpStatusCode.OK)]
-    public IActionResult EliminarProveedor(long id)
+    public async Task<IActionResult> EliminarProveedor(long id, CancellationToken cancellationToken)
     {
-        return Ok(_mediator.Eliminar(id));
+        return Ok(await _mediator.EliminarAsync(id, cancellationToken));
     }
 
     [AllowAnonymous]
     [HttpGet("list", Name = "GetProveedorList")]
     [ProducesResponseType(typeof(IReadOnlyList<Proveedor>), (int)HttpStatusCode.OK)]
-    public ActionResult<IReadOnlyList<Proveedor>> GetProveedorList([FromQuery] string? estado = "ACTIVO")
+    public async Task<ActionResult<IReadOnlyList<Proveedor>>> GetProveedorList(
+        [FromQuery] string? estado = "ACTIVO",
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 50,
+        CancellationToken cancellationToken = default)
     {
-        return Ok(_mediator.Listar(estado));
+        return Ok(await _mediator.ListarAsync(estado, page, pageSize, cancellationToken));
     }
 
     [AllowAnonymous]
     [HttpGet("{id:long}", Name = "GetProveedorById")]
     [ProducesResponseType(typeof(Proveedor), (int)HttpStatusCode.OK)]
-    public ActionResult<Proveedor?> GetProveedorById(long id)
+    public async Task<ActionResult<Proveedor?>> GetProveedorById(long id, CancellationToken cancellationToken)
     {
-        var proveedor = _mediator.ObtenerPorId(id);
+        var proveedor = await _mediator.ObtenerPorIdAsync(id, cancellationToken);
         if (proveedor is null) return NotFound();
         return Ok(proveedor);
     }
 
-    [AllowAnonymous]
+    [Authorize]
     [HttpPost("registerCuenta", Name = "CrearCuentaProveedor")]
     [ProducesResponseType(typeof(long), (int)HttpStatusCode.OK)]
-    public ActionResult<long> CrearCuentaProveedor([FromBody] CuentaProveedor cuenta)
+    public async Task<ActionResult<long>> CrearCuentaProveedor([FromBody] CuentaProveedor cuenta, CancellationToken cancellationToken)
     {
-       return Ok(_cuentaProveedor.Insertar(cuenta));
+       return Ok(await _cuentaProveedor.InsertarAsync(cuenta, cancellationToken));
     }
 
     [AllowAnonymous]
     [HttpGet("{proveedorId:long}/cuentas", Name = "ListarCuentasProveedor")]
     [ProducesResponseType(typeof(IReadOnlyList<CuentaProveedor>), (int)HttpStatusCode.OK)]
-    public ActionResult<IReadOnlyList<CuentaProveedor>> ListarCuentasProveedor(long proveedorId)
+    public async Task<ActionResult<IReadOnlyList<CuentaProveedor>>> ListarCuentasProveedor(
+        long proveedorId,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 50,
+        CancellationToken cancellationToken = default)
     {
-        return Ok(_cuentaProveedor.ListarPorProveedor(proveedorId));
+        return Ok(await _cuentaProveedor.ListarPorProveedorAsync(proveedorId, page, pageSize, cancellationToken));
     }
 
-    [AllowAnonymous]
+    [Authorize]
     [HttpDelete("cuentas/{cuentaId:long}", Name = "EliminarCuentaProveedor")]
     [ProducesResponseType((int)HttpStatusCode.OK)]
-    public IActionResult EliminarCuentaProveedor(long cuentaId)
+    public async Task<IActionResult> EliminarCuentaProveedor(long cuentaId, CancellationToken cancellationToken)
     {
-        var ok = _cuentaProveedor.Eliminar(cuentaId);
+        var ok = await _cuentaProveedor.EliminarAsync(cuentaId, cancellationToken);
         if (!ok) return NotFound();
         return Ok(ok);
     }

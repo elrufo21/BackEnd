@@ -1,8 +1,6 @@
-using System;
 using System.Data;
 using Ecommerce.Application.Contracts.Usuarios;
 using Ecommerce.Domain;
-using Microsoft.AspNetCore.Builder;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 
@@ -12,15 +10,15 @@ public class UsuariosCrudRepository : IUsuariosCrud
 {
     private readonly string _connectionString;
 
-    public UsuariosCrudRepository()
+    public UsuariosCrudRepository(IConfiguration configuration)
     {
-        var builder = WebApplication.CreateBuilder();
-        _connectionString = builder.Configuration.GetConnectionString("DefaultConnection")!;
+        _connectionString = configuration.GetConnectionString("DefaultConnection")
+            ?? throw new InvalidOperationException("Missing connection string: DefaultConnection");
     }
 
-    public int Insertar(UsuarioBd usuario)
+    public async Task<int> InsertarAsync(UsuarioBd usuario, CancellationToken cancellationToken = default)
     {
-        var (id, status) = EjecutarUpsert(0, usuario);
+        var (id, status) = await EjecutarUpsertAsync(0, usuario, cancellationToken);
         if (string.Equals(status, "EXISTE_USUARIO", StringComparison.OrdinalIgnoreCase))
         {
             return -1;
@@ -29,133 +27,166 @@ public class UsuariosCrudRepository : IUsuariosCrud
         return id;
     }
 
-    public bool Editar(int id, UsuarioBd usuario)
+    public async Task<bool> EditarAsync(int id, UsuarioBd usuario, CancellationToken cancellationToken = default)
     {
-        var (_, status) = EjecutarUpsert(id, usuario);
+        var (_, status) = await EjecutarUpsertAsync(id, usuario, cancellationToken);
         return string.Equals(status, "UPDATED", StringComparison.OrdinalIgnoreCase);
     }
 
-    public bool Eliminar(int id)
+    public async Task<bool> EliminarAsync(int id, CancellationToken cancellationToken = default)
     {
         const string sql = "uspEliminarUsuario";
-        using var con = new SqlConnection(_connectionString);
-        using var cmd = new SqlCommand(sql, con);
-        cmd.CommandTimeout = 300;
-        cmd.CommandType = CommandType.StoredProcedure;
+        await using var con = new SqlConnection(_connectionString);
+        await using var cmd = new SqlCommand(sql, con)
+        {
+            CommandTimeout = 300,
+            CommandType = CommandType.StoredProcedure
+        };
         cmd.Parameters.AddWithValue("@Id", id);
-        if (con.State == ConnectionState.Open) con.Close();
-        con.Open();
-        var rows = cmd.ExecuteNonQuery();
+        await con.OpenAsync(cancellationToken);
+        var rows = await cmd.ExecuteNonQueryAsync(cancellationToken);
         return rows > 0;
     }
 
-    public IReadOnlyList<UsuarioBd> Listar(string? estado = "ACTIVO")
+    public async Task<IReadOnlyList<UsuarioBd>> ListarAsync(string? estado = "ACTIVO", int page = 1, int pageSize = 50, CancellationToken cancellationToken = default)
     {
-        const string sql ="ListarUsuario";
-        using var con = new SqlConnection(_connectionString);
-        using var cmd = new SqlCommand(sql, con);
-        cmd.CommandTimeout = 300;
-        cmd.CommandType = CommandType.StoredProcedure;
+        (page, pageSize) = NormalizePagination(page, pageSize);
+
+        const string sql = """
+            SELECT U.UsuarioID,
+                   U.PersonalId,
+                   CONCAT(ISNULL(P.PersonalNombres, ''), ' ', ISNULL(P.PersonalApellidos, '')) AS Nombre,
+                   U.UsuarioAlias,
+                   U.UsuarioFechaReg AS Fecha,
+                   U.UsuarioEstado AS Estado,
+                   A.AreaNombre AS Area
+            FROM Usuarios U
+            LEFT JOIN Personal P ON P.PersonalId = U.PersonalId
+            LEFT JOIN Area A ON A.AreaId = P.AreaId
+            WHERE (@Estado IS NULL OR U.UsuarioEstado = @Estado)
+            ORDER BY U.UsuarioID DESC
+            OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;
+            """;
+
+        await using var con = new SqlConnection(_connectionString);
+        await using var cmd = new SqlCommand(sql, con);
         cmd.Parameters.AddWithValue("@Estado", (object?)estado ?? DBNull.Value);
-        if (con.State == ConnectionState.Open) con.Close();
-        con.Open();
-        using var reader = cmd.ExecuteReader();
+        cmd.Parameters.AddWithValue("@Offset", (page - 1) * pageSize);
+        cmd.Parameters.AddWithValue("@PageSize", pageSize);
+        await con.OpenAsync(cancellationToken);
+        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+
         var lista = new List<UsuarioBd>();
-        while (reader.Read())
+        while (await reader.ReadAsync(cancellationToken))
         {
             lista.Add(Map(reader));
         }
+
         return lista;
     }
 
-    public UsuarioBd? ObtenerPorId(int id)
+    public async Task<UsuarioBd?> ObtenerPorIdAsync(int id, CancellationToken cancellationToken = default)
     {
-        const string sql = @"SELECT UsuarioID,
-                                    PersonalId,
-                                    UsuarioAlias,
-                                    UsuarioClave,
-                                    UsuarioFechaReg,
-                                    UsuarioEstado
-                             FROM Usuarios
-                             WHERE UsuarioID = @UsuarioID";
+        const string sql = """
+            SELECT U.UsuarioID,
+                   U.PersonalId,
+                   CONCAT(ISNULL(P.PersonalNombres, ''), ' ', ISNULL(P.PersonalApellidos, '')) AS Nombre,
+                   U.UsuarioAlias,
+                   U.UsuarioFechaReg AS Fecha,
+                   U.UsuarioEstado AS Estado,
+                   A.AreaNombre AS Area
+            FROM Usuarios U
+            LEFT JOIN Personal P ON P.PersonalId = U.PersonalId
+            LEFT JOIN Area A ON A.AreaId = P.AreaId
+            WHERE U.UsuarioID = @UsuarioID;
+            """;
 
-        using var con = new SqlConnection(_connectionString);
-        using var cmd = new SqlCommand(sql, con);
+        await using var con = new SqlConnection(_connectionString);
+        await using var cmd = new SqlCommand(sql, con);
         cmd.Parameters.AddWithValue("@UsuarioID", id);
-        con.Open();
-        using var reader = cmd.ExecuteReader();
-        return reader.Read() ? Map(reader) : null;
+        await con.OpenAsync(cancellationToken);
+        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken) ? Map(reader) : null;
     }
 
-    public IReadOnlyList<UsuarioConPersonal> ListarConPersonal()
+    public async Task<IReadOnlyList<UsuarioConPersonal>> ListarConPersonalAsync(int page = 1, int pageSize = 50, CancellationToken cancellationToken = default)
     {
-        const string sql = @"SELECT U.UsuarioID,
-                                    U.PersonalId,
-                                    U.UsuarioAlias,
-                                    U.UsuarioClave,
-                                    U.UsuarioFechaReg,
-                                    U.UsuarioEstado,
-                                    P.PersonalId AS PersonalIdPersonal,
-                                    P.PersonalNombres,
-                                    P.PersonalApellidos,
-                                    P.AreaId,
-                                    P.PersonalCodigo,
-                                    P.PersonalNacimiento,
-                                    P.PersonalIngreso,
-                                    P.PersonalDNI,
-                                    P.PersonalDireccion,
-                                    P.PersonalTelefono,
-                                    P.PersonalEmail,
-                                    P.PersonalEstado,
-                                    P.PersonalImagen,
-                                    P.CompaniaId
-                             FROM Usuarios U
-                             LEFT JOIN Personal P ON U.PersonalId = P.PersonalId";
+        (page, pageSize) = NormalizePagination(page, pageSize);
 
-        using var con = new SqlConnection(_connectionString);
-        using var cmd = new SqlCommand(sql, con);
-        con.Open();
-        using var reader = cmd.ExecuteReader();
+        const string sql = """
+            SELECT U.UsuarioID,
+                   U.PersonalId,
+                   U.UsuarioAlias,
+                   U.UsuarioFechaReg AS Fecha,
+                   U.UsuarioEstado,
+                   P.PersonalId AS PersonalIdPersonal,
+                   P.PersonalNombres,
+                   P.PersonalApellidos,
+                   P.AreaId,
+                   P.PersonalCodigo,
+                   P.PersonalNacimiento,
+                   P.PersonalIngreso,
+                   P.PersonalDNI,
+                   P.PersonalDireccion,
+                   P.PersonalTelefono,
+                   P.PersonalEmail,
+                   P.PersonalEstado,
+                   P.PersonalImagen,
+                   P.CompaniaId
+            FROM Usuarios U
+            LEFT JOIN Personal P ON U.PersonalId = P.PersonalId
+            ORDER BY U.UsuarioID DESC
+            OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;
+            """;
+
+        await using var con = new SqlConnection(_connectionString);
+        await using var cmd = new SqlCommand(sql, con);
+        cmd.Parameters.AddWithValue("@Offset", (page - 1) * pageSize);
+        cmd.Parameters.AddWithValue("@PageSize", pageSize);
+        await con.OpenAsync(cancellationToken);
+        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+
         var lista = new List<UsuarioConPersonal>();
-        while (reader.Read())
+        while (await reader.ReadAsync(cancellationToken))
         {
             lista.Add(MapWithPersonal(reader));
         }
         return lista;
     }
 
-    public UsuarioConPersonal? ObtenerPorIdConPersonal(int id)
+    public async Task<UsuarioConPersonal?> ObtenerPorIdConPersonalAsync(int id, CancellationToken cancellationToken = default)
     {
-        const string sql = @"SELECT U.UsuarioID,
-                                    U.PersonalId,
-                                    U.UsuarioAlias,
-                                    U.UsuarioClave,
-                                    U.UsuarioFechaReg,
-                                    U.UsuarioEstado,
-                                    P.PersonalId AS PersonalIdPersonal,
-                                    P.PersonalNombres,
-                                    P.PersonalApellidos,
-                                    P.AreaId,
-                                    P.PersonalCodigo,
-                                    P.PersonalNacimiento,
-                                    P.PersonalIngreso,
-                                    P.PersonalDNI,
-                                    P.PersonalDireccion,
-                                    P.PersonalTelefono,
-                                    P.PersonalEmail,
-                                    P.PersonalEstado,
-                                    P.PersonalImagen,
-                                    P.CompaniaId
-                             FROM Usuarios U
-                             LEFT JOIN Personal P ON U.PersonalId = P.PersonalId
-                             WHERE U.UsuarioID = @UsuarioID";
+        const string sql = """
+            SELECT U.UsuarioID,
+                   U.PersonalId,
+                   U.UsuarioAlias,
+                   U.UsuarioFechaReg AS Fecha,
+                   U.UsuarioEstado,
+                   P.PersonalId AS PersonalIdPersonal,
+                   P.PersonalNombres,
+                   P.PersonalApellidos,
+                   P.AreaId,
+                   P.PersonalCodigo,
+                   P.PersonalNacimiento,
+                   P.PersonalIngreso,
+                   P.PersonalDNI,
+                   P.PersonalDireccion,
+                   P.PersonalTelefono,
+                   P.PersonalEmail,
+                   P.PersonalEstado,
+                   P.PersonalImagen,
+                   P.CompaniaId
+            FROM Usuarios U
+            LEFT JOIN Personal P ON U.PersonalId = P.PersonalId
+            WHERE U.UsuarioID = @UsuarioID;
+            """;
 
-        using var con = new SqlConnection(_connectionString);
-        using var cmd = new SqlCommand(sql, con);
+        await using var con = new SqlConnection(_connectionString);
+        await using var cmd = new SqlCommand(sql, con);
         cmd.Parameters.AddWithValue("@UsuarioID", id);
-        con.Open();
-        using var reader = cmd.ExecuteReader();
-        return reader.Read() ? MapWithPersonal(reader) : null;
+        await con.OpenAsync(cancellationToken);
+        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken) ? MapWithPersonal(reader) : null;
     }
 
     private static UsuarioBd Map(SqlDataReader reader)
@@ -166,8 +197,8 @@ public class UsuariosCrudRepository : IUsuariosCrud
             PersonalId = reader["PersonalId"] == DBNull.Value ? null : Convert.ToInt32(reader["PersonalId"]),
             Nombre = reader["Nombre"].ToString(),
             UsuarioAlias = reader["UsuarioAlias"].ToString(),
-            UsuarioClave = reader["UsuarioClave"].ToString(),
-            Area = reader["Area"].ToString(),
+            UsuarioClave = null,
+            Area = reader["Area"] == DBNull.Value ? null : reader["Area"].ToString(),
             UsuarioFechaReg = reader["Fecha"] == DBNull.Value ? null : Convert.ToDateTime(reader["Fecha"]),
             UsuarioEstado = reader["Estado"].ToString()
         };
@@ -180,7 +211,7 @@ public class UsuariosCrudRepository : IUsuariosCrud
             UsuarioID = Convert.ToInt32(reader["UsuarioID"]),
             PersonalId = reader["PersonalId"] == DBNull.Value ? null : Convert.ToInt32(reader["PersonalId"]),
             UsuarioAlias = reader["UsuarioAlias"].ToString(),
-            UsuarioClave = reader["UsuarioClave"].ToString(),
+            UsuarioClave = null,
             UsuarioFechaReg = reader["Fecha"] == DBNull.Value ? null : Convert.ToDateTime(reader["Fecha"]),
             UsuarioEstado = reader["UsuarioEstado"].ToString()
         };
@@ -209,17 +240,19 @@ public class UsuariosCrudRepository : IUsuariosCrud
         return usuario;
     }
 
-    private (int id, string? status) EjecutarUpsert(int usuarioId, UsuarioBd usuario)
+    private async Task<(int id, string? status)> EjecutarUpsertAsync(int usuarioId, UsuarioBd usuario, CancellationToken cancellationToken)
     {
-        using var con = new SqlConnection(_connectionString);
-        using var cmd = new SqlCommand("uspInsertarUsuario", con);
-        cmd.CommandTimeout = 300;
-        cmd.CommandType = CommandType.StoredProcedure;
+        await using var con = new SqlConnection(_connectionString);
+        await using var cmd = new SqlCommand("uspInsertarUsuario", con)
+        {
+            CommandTimeout = 300,
+            CommandType = CommandType.StoredProcedure
+        };
         var dataParam = cmd.Parameters.Add("@Data", SqlDbType.VarChar, -1);
         dataParam.Value = BuildDataString(usuarioId, usuario);
 
-        con.Open();
-        var result = cmd.ExecuteScalar();
+        await con.OpenAsync(cancellationToken);
+        var result = await cmd.ExecuteScalarAsync(cancellationToken);
 
         if (result == null)
         {
@@ -241,7 +274,13 @@ public class UsuariosCrudRepository : IUsuariosCrud
         var alias = usuario.UsuarioAlias?.Trim() ?? string.Empty;
         var clave = usuario.UsuarioClave?.Trim() ?? string.Empty;
         var estado = usuario.UsuarioEstado?.Trim() ?? string.Empty;
-
         return $"{usuarioId}|{personalId}|{alias}|{clave}|{estado}";
+    }
+
+    private static (int page, int pageSize) NormalizePagination(int page, int pageSize)
+    {
+        var normalizedPage = page < 1 ? 1 : page;
+        var normalizedPageSize = pageSize < 1 ? 1 : Math.Min(pageSize, 100);
+        return (normalizedPage, normalizedPageSize);
     }
 }

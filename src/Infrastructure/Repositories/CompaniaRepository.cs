@@ -1,6 +1,5 @@
 using Ecommerce.Application.Contracts.Companias;
 using Ecommerce.Domain;
-using Microsoft.AspNetCore.Builder;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 
@@ -10,13 +9,13 @@ public class CompaniaRepository : ICompania
 {
     private readonly string _connectionString;
 
-    public CompaniaRepository()
+    public CompaniaRepository(IConfiguration configuration)
     {
-        var builder = WebApplication.CreateBuilder();
-        _connectionString = builder.Configuration.GetConnectionString("DefaultConnection")!;
+        _connectionString = configuration.GetConnectionString("DefaultConnection")
+            ?? throw new InvalidOperationException("Missing connection string: DefaultConnection");
     }
 
-    public bool Insertar(Compania compania)
+    public async Task<bool> InsertarAsync(Compania compania, CancellationToken cancellationToken = default)
     {
         const string sql = @"INSERT INTO Compania (
                                 CompaniaRazonSocial,
@@ -73,15 +72,15 @@ public class CompaniaRepository : ICompania
                                 @PasswordCorreo,
                                 @CorreosAdmin)";
 
-        using var con = new SqlConnection(_connectionString);
-        using var cmd = new SqlCommand(sql, con);
+        await using var con = new SqlConnection(_connectionString);
+        await using var cmd = new SqlCommand(sql, con);
         AddParameters(cmd, compania);
-        con.Open();
-        var rows = cmd.ExecuteNonQuery();
+        await con.OpenAsync(cancellationToken);
+        var rows = await cmd.ExecuteNonQueryAsync(cancellationToken);
         return rows > 0;
     }
 
-    public bool Editar(int id, Compania compania)
+    public async Task<bool> EditarAsync(int id, Compania compania, CancellationToken cancellationToken = default)
     {
         const string sql = @"UPDATE Compania SET
                                 CompaniaRazonSocial = @CompaniaRazonSocial,
@@ -112,29 +111,29 @@ public class CompaniaRepository : ICompania
                                 CorreosAdmin = @CorreosAdmin
                               WHERE CompaniaId = @Id";
 
-        using var con = new SqlConnection(_connectionString);
-        using var cmd = new SqlCommand(sql, con);
+        await using var con = new SqlConnection(_connectionString);
+        await using var cmd = new SqlCommand(sql, con);
         cmd.Parameters.AddWithValue("@Id", id);
         AddParameters(cmd, compania);
-        con.Open();
-        var rows = cmd.ExecuteNonQuery();
+        await con.OpenAsync(cancellationToken);
+        var rows = await cmd.ExecuteNonQueryAsync(cancellationToken);
         return rows > 0;
     }
 
-    public bool Eliminar(int id)
+    public async Task<bool> EliminarAsync(int id, CancellationToken cancellationToken = default)
     {
         const string sql = "DELETE FROM Compania WHERE CompaniaId = @Id";
-        using var con = new SqlConnection(_connectionString);
-        using var cmd = new SqlCommand(sql, con);
+        await using var con = new SqlConnection(_connectionString);
+        await using var cmd = new SqlCommand(sql, con);
         cmd.Parameters.AddWithValue("@Id", id);
-        con.Open();
-        var rows = cmd.ExecuteNonQuery();
+        await con.OpenAsync(cancellationToken);
+        var rows = await cmd.ExecuteNonQueryAsync(cancellationToken);
         return rows > 0;
     }
 
-    public IReadOnlyList<Compania> Listar()
+    public async Task<IReadOnlyList<Compania>> ListarAsync(int page = 1, int pageSize = 50, CancellationToken cancellationToken = default)
     {
-        var lista = new List<Compania>();
+        (page, pageSize) = NormalizePagination(page, pageSize);
         const string sql = @"SELECT CompaniaId,
                                     CompaniaRazonSocial,
                                     CompaniaRUC,
@@ -162,13 +161,19 @@ public class CompaniaRepository : ICompania
                                     CorreoSGO,
                                     PasswordCorreo,
                                     CorreosAdmin
-                             FROM Compania";
+                             FROM Compania
+                             ORDER BY CompaniaId DESC
+                             OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;";
 
-        using var con = new SqlConnection(_connectionString);
-        using var cmd = new SqlCommand(sql, con);
-        con.Open();
-        using var reader = cmd.ExecuteReader();
-        while (reader.Read())
+        await using var con = new SqlConnection(_connectionString);
+        await using var cmd = new SqlCommand(sql, con);
+        cmd.Parameters.AddWithValue("@Offset", (page - 1) * pageSize);
+        cmd.Parameters.AddWithValue("@PageSize", pageSize);
+        await con.OpenAsync(cancellationToken);
+        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+
+        var lista = new List<Compania>();
+        while (await reader.ReadAsync(cancellationToken))
         {
             lista.Add(new Compania
             {
@@ -205,16 +210,25 @@ public class CompaniaRepository : ICompania
         return lista;
     }
 
-    public IReadOnlyList<EGeneral> ListarCombo()
+    public async Task<IReadOnlyList<EGeneral>> ListarComboAsync(int page = 1, int pageSize = 50, CancellationToken cancellationToken = default)
     {
-        var lista = new List<EGeneral>();
-        const string sql = "SELECT CompaniaId, CompaniaRazonSocial FROM Compania";
+        (page, pageSize) = NormalizePagination(page, pageSize);
+        const string sql = """
+            SELECT CompaniaId, CompaniaRazonSocial
+            FROM Compania
+            ORDER BY CompaniaId DESC
+            OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;
+            """;
 
-        using var con = new SqlConnection(_connectionString);
-        using var cmd = new SqlCommand(sql, con);
-        con.Open();
-        using var reader = cmd.ExecuteReader();
-        while (reader.Read())
+        await using var con = new SqlConnection(_connectionString);
+        await using var cmd = new SqlCommand(sql, con);
+        cmd.Parameters.AddWithValue("@Offset", (page - 1) * pageSize);
+        cmd.Parameters.AddWithValue("@PageSize", pageSize);
+        await con.OpenAsync(cancellationToken);
+        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+
+        var lista = new List<EGeneral>();
+        while (await reader.ReadAsync(cancellationToken))
         {
             lista.Add(new EGeneral
             {
@@ -264,5 +278,12 @@ public class CompaniaRepository : ICompania
         cmd.Parameters.AddWithValue("@CorreoSGO", (object?)compania.CorreoSGO ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@PasswordCorreo", (object?)compania.PasswordCorreo ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@CorreosAdmin", (object?)compania.CorreosAdmin ?? DBNull.Value);
+    }
+
+    private static (int page, int pageSize) NormalizePagination(int page, int pageSize)
+    {
+        var normalizedPage = page < 1 ? 1 : page;
+        var normalizedPageSize = pageSize < 1 ? 1 : Math.Min(pageSize, 100);
+        return (normalizedPage, normalizedPageSize);
     }
 }

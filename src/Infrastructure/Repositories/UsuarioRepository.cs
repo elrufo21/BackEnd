@@ -1,7 +1,8 @@
 using Ecommerce.Application.Contracts.Usuarios;
 using Ecommerce.Application.Identity;
-using Ecommerce.Domain;
 using Ecommerce.Application.Models.Token;
+using Ecommerce.Domain;
+using Ecommerce.Infrastructure.Persistence;
 using Microsoft.Extensions.Options;
 
 namespace Ecommerce.Infrastructure.Persistence.Repositories;
@@ -10,57 +11,54 @@ public class UsuarioRepository : IUsuario
 {
     private readonly IAuthService _authService;
     private readonly JwtSettings _jwtSettings;
+    private readonly AccesoDatos _accesoDatos;
 
     public UsuarioRepository(
-                    IAuthService authService,
-                    IOptions<JwtSettings> jwtSettings)
+        IAuthService authService,
+        IOptions<JwtSettings> jwtSettings,
+        AccesoDatos accesoDatos)
     {
         _authService = authService;
         _jwtSettings = jwtSettings.Value;
+        _accesoDatos = accesoDatos;
     }
 
-    AccesoDatos daSQL = new AccesoDatos();
-    public AuthResponseA Login(EUser loginUser)
+    public async Task<AuthResponseA> LoginAsync(EUser loginUser, CancellationToken cancellationToken = default)
     {
-        string? xvalue = string.Empty;
-        string[] xinfo;
-        xvalue = loginUser.Email + "|" + loginUser.Password;
-        string? rpt;
-        rpt = daSQL.ejecutarComando("uspValidaUsuario", "@Data", xvalue);
+        var data = $"{loginUser.Email}|{loginUser.Password}";
+        var result = await _accesoDatos.EjecutarComandoAsync("uspValidaUsuario", "@Data", data, cancellationToken);
 
-        if (string.IsNullOrEmpty(rpt))
+        if (string.IsNullOrWhiteSpace(result))
         {
-            throw new Exception("No hay conexion con el servidor");
+            throw new InvalidOperationException("No hay conexión con el servidor.");
         }
-        else
+
+        var info = result.Split('[');
+        if (info.Length == 0 || info[0] == "~")
         {
-            xinfo = rpt.Split('[');
-            if (xinfo[0] == "~")
-            {
-                throw new Exception("Acceso Denegado, Usted no es Usuario del Sistema.");
-            }
+            throw new UnauthorizedAccessException("Acceso denegado, usuario no válido.");
         }
-        string[] data = xinfo[0].Split('|');
+
+        var payload = info[0].Split('|');
+        if (payload.Length < 6)
+        {
+            throw new InvalidOperationException("Respuesta de autenticación inválida.");
+        }
+
         var nowUtc = DateTime.UtcNow;
         var expiresAtUtc = nowUtc.Add(_jwtSettings.ExpireTime);
         var expiresInSeconds = (int)_jwtSettings.ExpireTime.TotalSeconds;
-        var authResponse = new AuthResponseA
+        return new AuthResponseA
         {
-            Id = data[0].ToString(),
-            PersonalId = data[1].ToString(),
-            Area = data[2].ToString(),
-            Usuario = data[3].ToString(),
-            CompaniaId = data[4].ToString(),
-            RazonSocial = data[5].ToString(),
-            //RUC = data[6].ToString(),
-            //UsuarioSerie = data[7].ToString(),
-            //Avatar = data[23].ToString(),
-            //DireccionEnvio = _mapper.Map<AddressVm>(direccionEnvio),
+            Id = payload[0],
+            PersonalId = payload[1],
+            Area = payload[2],
+            Usuario = payload[3],
+            CompaniaId = payload[4],
+            RazonSocial = payload[5],
             Token = _authService.CreateTokenA(expiresAtUtc.ToString("O")),
             ExpiresAtUtc = expiresAtUtc,
             ExpiresInSeconds = expiresInSeconds
-            //Roles = "ADMIN"
         };
-        return authResponse;
     }
 }

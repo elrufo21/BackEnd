@@ -1,7 +1,7 @@
 using System.Data;
 using Ecommerce.Application.Contracts.Clientes;
 using Ecommerce.Domain;
-using Microsoft.AspNetCore.Builder;
+using Ecommerce.Infrastructure.Persistence;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 
@@ -10,55 +10,60 @@ namespace Ecommerce.Infrastructure.Persistence.Repositories;
 public class ClienteRepository : ICliente
 {
     private readonly string _connectionString;
-    AccesoDatos daSQL = new AccesoDatos();
+    private readonly AccesoDatos _accesoDatos;
 
-    public ClienteRepository()
+    public ClienteRepository(IConfiguration configuration, AccesoDatos accesoDatos)
     {
-        var builder = WebApplication.CreateBuilder();
-        _connectionString = builder.Configuration.GetConnectionString("DefaultConnection")!;
+        _connectionString = configuration.GetConnectionString("DefaultConnection")
+            ?? throw new InvalidOperationException("Missing connection string: DefaultConnection");
+        _accesoDatos = accesoDatos;
     }
 
-    public string Insertar(Cliente cliente)
+    public async Task<string> InsertarAsync(Cliente cliente, CancellationToken cancellationToken = default)
     {
-        string rpt = string.Empty;
-        string xvalue = string.Empty;
-        xvalue = cliente.ClienteId + "|" + cliente.ClienteRazon?.Trim() + "|" +
-        cliente.ClienteRuc?.Trim() + "|" + cliente.ClienteDni?.Trim() + "|" + 
-        cliente.ClienteDireccion?.Trim() + "|" +cliente.ClienteTelefono+ "|" +
-        cliente.ClienteCorreo?.Trim()+ "|" +cliente.ClienteEstado+ "|" +
-        cliente.ClienteDespacho?.Trim()+ "|" +cliente.ClienteUsuario;
-        rpt = daSQL.ejecutarComando("uspInsertarCliente", "@Data", xvalue);
-        if (string.IsNullOrEmpty(rpt)) rpt = "error";
-        return rpt;
+        var data = $"{cliente.ClienteId}|{cliente.ClienteRazon?.Trim()}|{cliente.ClienteRuc?.Trim()}|{cliente.ClienteDni?.Trim()}|{cliente.ClienteDireccion?.Trim()}|{cliente.ClienteTelefono}|{cliente.ClienteCorreo?.Trim()}|{cliente.ClienteEstado}|{cliente.ClienteDespacho?.Trim()}|{cliente.ClienteUsuario}";
+        var result = await _accesoDatos.EjecutarComandoAsync("uspInsertarCliente", "@Data", data, cancellationToken);
+        return string.IsNullOrWhiteSpace(result) ? "error" : result;
     }
-       
-    public bool Eliminar(long id)
+
+    public async Task<bool> EliminarAsync(long id, CancellationToken cancellationToken = default)
     {
         const string sql = "uspEliminarCliente";
-        using var con = new SqlConnection(_connectionString);
-        using var cmd = new SqlCommand(sql, con);
-        cmd.CommandTimeout = 300;
-        cmd.CommandType = CommandType.StoredProcedure;
+        await using var con = new SqlConnection(_connectionString);
+        await using var cmd = new SqlCommand(sql, con)
+        {
+            CommandTimeout = 300,
+            CommandType = CommandType.StoredProcedure
+        };
         cmd.Parameters.AddWithValue("@Id", id);
-        if (con.State == ConnectionState.Open) con.Close();
-        con.Open();
-        var rows = cmd.ExecuteNonQuery();
+        await con.OpenAsync(cancellationToken);
+        var rows = await cmd.ExecuteNonQueryAsync(cancellationToken);
         return rows > 0;
     }
 
-    public IReadOnlyList<Cliente> Listar(string? estado = "ACTIVO")
+    public async Task<IReadOnlyList<Cliente>> ListarAsync(string? estado = "ACTIVO", int page = 1, int pageSize = 50, CancellationToken cancellationToken = default)
     {
-        var lista = new List<Cliente>();
-        const string sql = "uspListarClientes";
-        using var con = new SqlConnection(_connectionString);
-        using var cmd = new SqlCommand(sql, con);
-        cmd.CommandTimeout = 300;
-        cmd.CommandType = CommandType.StoredProcedure;
+        (page, pageSize) = NormalizePagination(page, pageSize);
+
+        const string sql = """
+            SELECT ClienteId, ClienteRazon, ClienteRuc, ClienteDni, ClienteDireccion, ClienteTelefono,
+                   ClienteCorreo, ClienteEstado, ClienteDespacho, ClienteUsuario, ClienteFecha
+            FROM Cliente
+            WHERE (@Estado IS NULL OR ClienteEstado = @Estado)
+            ORDER BY ClienteId DESC
+            OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;
+            """;
+
+        await using var con = new SqlConnection(_connectionString);
+        await using var cmd = new SqlCommand(sql, con);
         cmd.Parameters.AddWithValue("@Estado", (object?)estado ?? DBNull.Value);
-        if (con.State == ConnectionState.Open) con.Close();
-        con.Open();
-        using var reader = cmd.ExecuteReader();
-        while (reader.Read())
+        cmd.Parameters.AddWithValue("@Offset", (page - 1) * pageSize);
+        cmd.Parameters.AddWithValue("@PageSize", pageSize);
+        await con.OpenAsync(cancellationToken);
+        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+
+        var lista = new List<Cliente>();
+        while (await reader.ReadAsync(cancellationToken))
         {
             lista.Add(new Cliente
             {
@@ -79,9 +84,16 @@ public class ClienteRepository : ICliente
         return lista;
     }
 
-    public string ListarCombo()
+    public async Task<string> ListarComboAsync(CancellationToken cancellationToken = default)
     {
-        var rpt =daSQL.ejecutarComando("uspListaComboClienteWeb");
-        return string.IsNullOrWhiteSpace(rpt) ? string.Empty : rpt;
+        var result = await _accesoDatos.EjecutarComandoAsync("uspListaComboClienteWeb", cancellationToken: cancellationToken);
+        return string.IsNullOrWhiteSpace(result) ? string.Empty : result;
+    }
+
+    private static (int page, int pageSize) NormalizePagination(int page, int pageSize)
+    {
+        var normalizedPage = page < 1 ? 1 : page;
+        var normalizedPageSize = pageSize < 1 ? 1 : Math.Min(pageSize, 100);
+        return (normalizedPage, normalizedPageSize);
     }
 }

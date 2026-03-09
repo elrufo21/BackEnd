@@ -17,43 +17,49 @@ public class CompaniaController : ControllerBase
         _mediator = mediator;
     }
 
-    [AllowAnonymous]
+    [Authorize]
     [HttpPost("register", Name = "RegisterCompania")]
     [ProducesResponseType((int)HttpStatusCode.OK)]
-    public IActionResult RegisterCompania([FromBody] Compania compania)
+    public async Task<IActionResult> RegisterCompania([FromBody] Compania compania, CancellationToken cancellationToken)
     {
-        return Ok(_mediator.Insertar(compania));
+        return Ok(await _mediator.InsertarAsync(compania, cancellationToken));
     }
 
-    [AllowAnonymous]
+    [Authorize]
     [HttpPut("{id}", Name = "EditarCompania")]
     [ProducesResponseType((int)HttpStatusCode.OK)]
-    public IActionResult EditarCompania(int id, [FromBody] Compania compania)
+    public async Task<IActionResult> EditarCompania(int id, [FromBody] Compania compania, CancellationToken cancellationToken)
     {
-        return Ok(_mediator.Editar(id, compania));
+        return Ok(await _mediator.EditarAsync(id, compania, cancellationToken));
     }
 
-    [AllowAnonymous]
+    [Authorize]
     [HttpDelete("{id}", Name = "EliminarCompania")]
     [ProducesResponseType((int)HttpStatusCode.OK)]
-    public IActionResult EliminarCompania(int id)
+    public async Task<IActionResult> EliminarCompania(int id, CancellationToken cancellationToken)
     {
-        return Ok(_mediator.Eliminar(id));
+        return Ok(await _mediator.EliminarAsync(id, cancellationToken));
     }
 
     [AllowAnonymous]
     [HttpGet("list", Name = "GetCompaniaList")]
     [ProducesResponseType(typeof(IReadOnlyList<Compania>), (int)HttpStatusCode.OK)]
-    public ActionResult<IReadOnlyList<Compania>> GetCompaniaList()
+    public async Task<ActionResult<IReadOnlyList<Compania>>> GetCompaniaList(
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 50,
+        CancellationToken cancellationToken = default)
     {
-        return Ok(_mediator.Listar());
+        return Ok(await _mediator.ListarAsync(page, pageSize, cancellationToken));
     }
 
     [AllowAnonymous]
     [HttpGet("combo", Name = "GetCompaniaCombo")]
     [ProducesResponseType(typeof(IReadOnlyList<EGeneral>), (int)HttpStatusCode.OK)]
-    public ActionResult<IReadOnlyList<EGeneral>> GetCompaniaCombo()
+    public async Task<ActionResult<IReadOnlyList<EGeneral>>> GetCompaniaCombo(
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 50,
+        CancellationToken cancellationToken = default)
     {
-        return Ok(_mediator.ListarCombo());
+        return Ok(await _mediator.ListarComboAsync(page, pageSize, cancellationToken));
     }
 }

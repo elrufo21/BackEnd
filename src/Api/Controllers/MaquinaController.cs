@@ -17,27 +17,30 @@ public class MaquinaController : ControllerBase
         _mediator = mediator;
     }
 
-    [AllowAnonymous]
+    [Authorize]
     [HttpPost("registermaquina", Name = "RegisterMaquina")]
     [ProducesResponseType((int)HttpStatusCode.OK)]
-    public IActionResult RegisterMaquina([FromBody] Maquina maquina)
+    public async Task<IActionResult> RegisterMaquina([FromBody] Maquina maquina, CancellationToken cancellationToken)
     {
-        return Ok(_mediator.Insertar(maquina));
+        return Ok(await _mediator.InsertarAsync(maquina, cancellationToken));
     }
     
-    [AllowAnonymous]
+    [Authorize]
     [HttpDelete("{id}", Name = "EliminarMaquina")]
     [ProducesResponseType((int)HttpStatusCode.OK)]
-    public IActionResult EliminarMaquina(int id)
+    public async Task<IActionResult> EliminarMaquina(int id, CancellationToken cancellationToken)
     {
-        return Ok(_mediator.Eliminar(id));
+        return Ok(await _mediator.EliminarAsync(id, cancellationToken));
     }
 
     [AllowAnonymous]
     [HttpGet("list", Name = "GetMaquinaList")]
     [ProducesResponseType(typeof(IReadOnlyList<Maquina>), (int)HttpStatusCode.OK)]
-    public ActionResult<IReadOnlyList<Maquina>> GetMaquinaList()
+    public async Task<ActionResult<IReadOnlyList<Maquina>>> GetMaquinaList(
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 50,
+        CancellationToken cancellationToken = default)
     {
-        return Ok(_mediator.Listar());
+        return Ok(await _mediator.ListarAsync(page, pageSize, cancellationToken));
     }
 }

@@ -3,7 +3,7 @@ namespace Ecommerce.Application.Contracts.Lineas;
 
 public interface ILinea
 {
-    public string Insertar(Linea linea);
-    public bool Eliminar(int id);
-    public IReadOnlyList<EGeneral> Listar();
+    Task<string> InsertarAsync(Linea linea, CancellationToken cancellationToken = default);
+    Task<bool> EliminarAsync(int id, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<EGeneral>> ListarAsync(int page = 1, int pageSize = 50, CancellationToken cancellationToken = default);
 }

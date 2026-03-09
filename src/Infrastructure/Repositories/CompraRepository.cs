@@ -1,9 +1,7 @@
-using System.Collections.Generic;
 using System.Data;
-using System.Linq;
+using System.Text;
 using Ecommerce.Application.Contracts.Compras;
 using Ecommerce.Domain;
-using Microsoft.AspNetCore.Builder;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 
@@ -13,80 +11,84 @@ public class CompraRepository : ICompra
 {
     private readonly string _connectionString;
 
-    public CompraRepository()
+    public CompraRepository(IConfiguration configuration)
     {
-        var builder = WebApplication.CreateBuilder();
-        _connectionString = builder.Configuration.GetConnectionString("DefaultConnection")!;
+        _connectionString = configuration.GetConnectionString("DefaultConnection")
+            ?? throw new InvalidOperationException("Missing connection string: DefaultConnection");
     }
 
-    public string Insertar(Compra compra)
+    public async Task<string> InsertarAsync(Compra compra, CancellationToken cancellationToken = default)
     {
-        using var con = new SqlConnection(_connectionString);
-        con.Open();
-        using var tx = con.BeginTransaction();
+        await using var con = new SqlConnection(_connectionString);
+        await con.OpenAsync(cancellationToken);
+        await using var tx = (SqlTransaction)await con.BeginTransactionAsync(cancellationToken);
 
-        var compraId = InsertOrUpdateCompra(compra, con, tx);
+        var compraId = await InsertOrUpdateCompraAsync(compra, con, tx, cancellationToken);
         if (compraId <= 0)
         {
-            tx.Rollback();
+            await tx.RollbackAsync(cancellationToken);
             return compra.CompraId > 0 ? "NOT_FOUND" : "error";
         }
 
-        tx.Commit();
+        await tx.CommitAsync(cancellationToken);
         return compra.CompraId > 0 ? "UPDATED" : compraId.ToString();
     }
 
-    public string InsertarConDetalle(Compra compra, IEnumerable<DetalleCompra> detalles)
+    public async Task<string> InsertarConDetalleAsync(Compra compra, IEnumerable<DetalleCompra> detalles, CancellationToken cancellationToken = default)
     {
-        using var con = new SqlConnection(_connectionString);
-        con.Open();
-        using var tx = con.BeginTransaction();
+        await using var con = new SqlConnection(_connectionString);
+        await con.OpenAsync(cancellationToken);
+        await using var tx = (SqlTransaction)await con.BeginTransactionAsync(cancellationToken);
 
-        var compraId = InsertOrUpdateCompra(compra, con, tx);
+        var compraId = await InsertOrUpdateCompraAsync(compra, con, tx, cancellationToken);
         if (compraId <= 0)
         {
-            tx.Rollback();
+            await tx.RollbackAsync(cancellationToken);
             return compra.CompraId > 0 ? "NOT_FOUND" : "error";
         }
 
         var detalleList = detalles?.ToList() ?? new List<DetalleCompra>();
-        DeleteDetallesByCompra(compraId, con, tx);
         foreach (var detalle in detalleList)
         {
             detalle.CompraId = compraId;
-            InsertDetalle(detalle, con, tx);
         }
+        await MergeDetallesCompraAsync(compraId, detalleList, con, tx, cancellationToken);
 
-        tx.Commit();
+        await tx.CommitAsync(cancellationToken);
         return compraId.ToString();
     }
 
-    public bool Eliminar(long id)
+    public async Task<bool> EliminarAsync(long id, CancellationToken cancellationToken = default)
     {
-        using var con = new SqlConnection(_connectionString);
-        con.Open();
-        using var tx = con.BeginTransaction();
+        await using var con = new SqlConnection(_connectionString);
+        await con.OpenAsync(cancellationToken);
+        await using var tx = (SqlTransaction)await con.BeginTransactionAsync(cancellationToken);
 
-        DeleteDetallesByCompra(id, con, tx);
-
-        const string sql = "DELETE FROM Compras WHERE CompraId = @Id";
-        using var cmd = new SqlCommand(sql, con, tx);
-        cmd.CommandTimeout = 300;
-        cmd.CommandType = CommandType.Text;
+        const string sqlDeleteCompra = "DELETE FROM Compras WHERE CompraId = @Id";
+        await using var cmd = new SqlCommand(sqlDeleteCompra, con, tx)
+        {
+            CommandTimeout = 300,
+            CommandType = CommandType.Text
+        };
         cmd.Parameters.AddWithValue("@Id", id);
 
-        var rows = cmd.ExecuteNonQuery();
+        const string sqlDeleteDetalles = "DELETE FROM DetalleCompra WHERE CompraId = @CompraId";
+        await using var cmdDet = new SqlCommand(sqlDeleteDetalles, con, tx);
+        cmdDet.Parameters.AddWithValue("@CompraId", id);
+        await cmdDet.ExecuteNonQueryAsync(cancellationToken);
+
+        var rows = await cmd.ExecuteNonQueryAsync(cancellationToken);
         if (rows > 0)
         {
-            tx.Commit();
+            await tx.CommitAsync(cancellationToken);
             return true;
         }
 
-        tx.Rollback();
+        await tx.RollbackAsync(cancellationToken);
         return false;
     }
 
-    public Compra? ObtenerPorId(long id)
+    public async Task<Compra?> ObtenerPorIdAsync(long id, CancellationToken cancellationToken = default)
     {
         const string sql = @"SELECT CompraId,
                                     CompraCorrelativo,
@@ -119,19 +121,21 @@ public class CompraRepository : ICompra
                              FROM Compras
                              WHERE CompraId = @Id";
 
-        using var con = new SqlConnection(_connectionString);
-        using var cmd = new SqlCommand(sql, con);
-        cmd.CommandTimeout = 300;
-        cmd.CommandType = CommandType.Text;
+        await using var con = new SqlConnection(_connectionString);
+        await using var cmd = new SqlCommand(sql, con)
+        {
+            CommandTimeout = 300,
+            CommandType = CommandType.Text
+        };
         cmd.Parameters.AddWithValue("@Id", id);
-        if (con.State == ConnectionState.Open) con.Close();
-        con.Open();
-        using var reader = cmd.ExecuteReader();
-        return reader.Read() ? Map(reader) : null;
+        await con.OpenAsync(cancellationToken);
+        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken) ? Map(reader) : null;
     }
 
-    public IReadOnlyList<Compra> ListarCrud(string? estado = null)
+    public async Task<IReadOnlyList<Compra>> ListarCrudAsync(string? estado = null, int page = 1, int pageSize = 50, CancellationToken cancellationToken = default)
     {
+        (page, pageSize) = NormalizePagination(page, pageSize);
         var sql = @"SELECT CompraId,
                            CompraCorrelativo,
                            ProveedorId,
@@ -160,33 +164,34 @@ public class CompraRepository : ICompra
                            CompraTipoSunat,
                            CompraConcepto,
                            CompraPercepcion
-                    FROM Compras";
+                    FROM Compras
+                    WHERE (@Estado IS NULL OR CompraEstado = @Estado)
+                    ORDER BY CompraId DESC
+                    OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;";
 
-        using var con = new SqlConnection(_connectionString);
-        using var cmd = new SqlCommand(sql, con);
-        cmd.CommandTimeout = 300;
-        cmd.CommandType = CommandType.Text;
-        if (!string.IsNullOrWhiteSpace(estado))
+        await using var con = new SqlConnection(_connectionString);
+        await using var cmd = new SqlCommand(sql, con)
         {
-            cmd.CommandText += " WHERE CompraEstado = @Estado";
-            cmd.Parameters.AddWithValue("@Estado", estado);
-        }
+            CommandTimeout = 300,
+            CommandType = CommandType.Text
+        };
+        cmd.Parameters.AddWithValue("@Estado", (object?)estado ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@Offset", (page - 1) * pageSize);
+        cmd.Parameters.AddWithValue("@PageSize", pageSize);
+        await con.OpenAsync(cancellationToken);
+        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
 
-        cmd.CommandText += " ORDER BY CompraId DESC";
-
-        if (con.State == ConnectionState.Open) con.Close();
-        con.Open();
-        using var reader = cmd.ExecuteReader();
         var lista = new List<Compra>();
-        while (reader.Read())
+        while (await reader.ReadAsync(cancellationToken))
         {
             lista.Add(Map(reader));
         }
         return lista;
     }
 
-    public IReadOnlyList<DetalleCompra> ListarDetalle(long compraId)
+    public async Task<IReadOnlyList<DetalleCompra>> ListarDetalleAsync(long compraId, int page = 1, int pageSize = 50, CancellationToken cancellationToken = default)
     {
+        (page, pageSize) = NormalizePagination(page, pageSize);
         const string sql = @"SELECT DetalleId,
                                     CompraId,
                                     IdProducto,
@@ -203,25 +208,30 @@ public class CompraRepository : ICompra
                                     ValorUM
                              FROM DetalleCompra
                              WHERE CompraId = @CompraId
-                             ORDER BY DetalleId";
+                             ORDER BY DetalleId
+                             OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;";
 
-        using var con = new SqlConnection(_connectionString);
-        using var cmd = new SqlCommand(sql, con);
-        cmd.CommandTimeout = 300;
-        cmd.CommandType = CommandType.Text;
+        await using var con = new SqlConnection(_connectionString);
+        await using var cmd = new SqlCommand(sql, con)
+        {
+            CommandTimeout = 300,
+            CommandType = CommandType.Text
+        };
         cmd.Parameters.AddWithValue("@CompraId", compraId);
-        if (con.State == ConnectionState.Open) con.Close();
-        con.Open();
-        using var reader = cmd.ExecuteReader();
+        cmd.Parameters.AddWithValue("@Offset", (page - 1) * pageSize);
+        cmd.Parameters.AddWithValue("@PageSize", pageSize);
+        await con.OpenAsync(cancellationToken);
+        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+
         var lista = new List<DetalleCompra>();
-        while (reader.Read())
+        while (await reader.ReadAsync(cancellationToken))
         {
             lista.Add(MapDetalle(reader));
         }
         return lista;
     }
 
-    private static long InsertOrUpdateCompra(Compra compra, SqlConnection con, SqlTransaction tx)
+    private static async Task<long> InsertOrUpdateCompraAsync(Compra compra, SqlConnection con, SqlTransaction tx, CancellationToken cancellationToken)
     {
         if (compra.CompraId > 0)
         {
@@ -255,139 +265,150 @@ public class CompraRepository : ICompra
                                            CompraPercepcion = @CompraPercepcion
                                        WHERE CompraId = @CompraId";
 
-            using var cmd = new SqlCommand(sqlUpdate, con, tx);
-            cmd.CommandTimeout = 300;
-            cmd.CommandType = CommandType.Text;
+            await using var cmd = new SqlCommand(sqlUpdate, con, tx)
+            {
+                CommandTimeout = 300,
+                CommandType = CommandType.Text
+            };
             AddParameters(cmd, compra);
             cmd.Parameters.AddWithValue("@CompraId", compra.CompraId);
-            var rows = cmd.ExecuteNonQuery();
+            var rows = await cmd.ExecuteNonQueryAsync(cancellationToken);
             return rows > 0 ? compra.CompraId : 0;
         }
-        else
+
+        const string sqlInsert = @"INSERT INTO Compras
+                                    (CompraCorrelativo,
+                                     ProveedorId,
+                                     CompraRegistro,
+                                     CompraEmision,
+                                     CompraComputo,
+                                     TipoCodigo,
+                                     CompraSerie,
+                                     CompraNumero,
+                                     CompraCondicion,
+                                     CompraMoneda,
+                                     CompraTipoCambio,
+                                     CompraDias,
+                                     CompraFechaPago,
+                                     CompraUsuario,
+                                     CompraTipoIgv,
+                                     CompraValorVenta,
+                                     CompraDescuento,
+                                     CompraSubtotal,
+                                     CompraIgv,
+                                     CompraTotal,
+                                     CompraEstado,
+                                     CompraAsociado,
+                                     CompraSaldo,
+                                     CompraOBS,
+                                     CompraTipoSunat,
+                                     CompraConcepto,
+                                     CompraPercepcion)
+                               VALUES (@CompraCorrelativo,
+                                       @ProveedorId,
+                                       @CompraRegistro,
+                                       @CompraEmision,
+                                       @CompraComputo,
+                                       @TipoCodigo,
+                                       @CompraSerie,
+                                       @CompraNumero,
+                                       @CompraCondicion,
+                                       @CompraMoneda,
+                                       @CompraTipoCambio,
+                                       @CompraDias,
+                                       @CompraFechaPago,
+                                       @CompraUsuario,
+                                       @CompraTipoIgv,
+                                       @CompraValorVenta,
+                                       @CompraDescuento,
+                                       @CompraSubtotal,
+                                       @CompraIgv,
+                                       @CompraTotal,
+                                       @CompraEstado,
+                                       @CompraAsociado,
+                                       @CompraSaldo,
+                                       @CompraObs,
+                                       @CompraTipoSunat,
+                                       @CompraConcepto,
+                                       @CompraPercepcion);
+                               SELECT SCOPE_IDENTITY();";
+
+        await using var insertCmd = new SqlCommand(sqlInsert, con, tx)
         {
-            const string sqlInsert = @"INSERT INTO Compras
-                                            (CompraCorrelativo,
-                                             ProveedorId,
-                                             CompraRegistro,
-                                             CompraEmision,
-                                             CompraComputo,
-                                             TipoCodigo,
-                                             CompraSerie,
-                                             CompraNumero,
-                                             CompraCondicion,
-                                             CompraMoneda,
-                                             CompraTipoCambio,
-                                             CompraDias,
-                                             CompraFechaPago,
-                                             CompraUsuario,
-                                             CompraTipoIgv,
-                                             CompraValorVenta,
-                                             CompraDescuento,
-                                             CompraSubtotal,
-                                             CompraIgv,
-                                             CompraTotal,
-                                             CompraEstado,
-                                             CompraAsociado,
-                                             CompraSaldo,
-                                             CompraOBS,
-                                             CompraTipoSunat,
-                                             CompraConcepto,
-                                             CompraPercepcion)
-                                       VALUES (@CompraCorrelativo,
-                                               @ProveedorId,
-                                               @CompraRegistro,
-                                               @CompraEmision,
-                                               @CompraComputo,
-                                               @TipoCodigo,
-                                               @CompraSerie,
-                                               @CompraNumero,
-                                               @CompraCondicion,
-                                               @CompraMoneda,
-                                               @CompraTipoCambio,
-                                               @CompraDias,
-                                               @CompraFechaPago,
-                                               @CompraUsuario,
-                                               @CompraTipoIgv,
-                                               @CompraValorVenta,
-                                               @CompraDescuento,
-                                               @CompraSubtotal,
-                                               @CompraIgv,
-                                               @CompraTotal,
-                                               @CompraEstado,
-                                               @CompraAsociado,
-                                               @CompraSaldo,
-                                               @CompraObs,
-                                               @CompraTipoSunat,
-                                               @CompraConcepto,
-                                               @CompraPercepcion);
-                                       SELECT SCOPE_IDENTITY();";
+            CommandTimeout = 300,
+            CommandType = CommandType.Text
+        };
+        AddParameters(insertCmd, compra);
+        var result = await insertCmd.ExecuteScalarAsync(cancellationToken);
+        return result == null ? 0 : Convert.ToInt64(result);
+    }
 
-            using var cmd = new SqlCommand(sqlInsert, con, tx);
-            cmd.CommandTimeout = 300;
-            cmd.CommandType = CommandType.Text;
-            AddParameters(cmd, compra);
-            var result = cmd.ExecuteScalar();
-            return result == null ? 0 : Convert.ToInt64(result);
+    private static async Task MergeDetallesCompraAsync(long compraId, IReadOnlyList<DetalleCompra> detalles, SqlConnection con, SqlTransaction tx, CancellationToken cancellationToken)
+    {
+        if (detalles.Count == 0)
+        {
+            const string deleteSql = "DELETE FROM DetalleCompra WHERE CompraId = @CompraId";
+            await using var deleteCmd = new SqlCommand(deleteSql, con, tx);
+            deleteCmd.Parameters.AddWithValue("@CompraId", compraId);
+            await deleteCmd.ExecuteNonQueryAsync(cancellationToken);
+            return;
         }
-    }
 
-    private static void InsertDetalle(DetalleCompra detalle, SqlConnection con, SqlTransaction tx)
-    {
-        const string sql = @"INSERT INTO DetalleCompra
-                                    (CompraId,
-                                     IdProducto,
-                                     DetalleCodigo,
-                                     Descripcion,
-                                     DetalleUM,
-                                     DetalleCantidad,
-                                     PrecioCosto,
-                                     DetalleImporte,
-                                     DetalleDescuento,
-                                     DetalleEstado,
-                                     DescuentoB,
-                                     EstadoB,
-                                     ValorUM)
-                             VALUES (@CompraId,
-                                     @IdProducto,
-                                     @DetalleCodigo,
-                                     @Descripcion,
-                                     @DetalleUM,
-                                     @DetalleCantidad,
-                                     @PrecioCosto,
-                                     @DetalleImporte,
-                                     @DetalleDescuento,
-                                     @DetalleEstado,
-                                     @DescuentoB,
-                                     @EstadoB,
-                                     @ValorUM)";
+        var sb = new StringBuilder();
+        sb.AppendLine("MERGE DetalleCompra AS target");
+        sb.AppendLine("USING (VALUES");
 
-        using var cmd = new SqlCommand(sql, con, tx);
-        cmd.CommandTimeout = 300;
-        cmd.CommandType = CommandType.Text;
-        AddParam(cmd, "@CompraId", detalle.CompraId);
-        AddParam(cmd, "@IdProducto", detalle.IdProducto);
-        AddParam(cmd, "@DetalleCodigo", detalle.DetalleCodigo);
-        AddParam(cmd, "@Descripcion", detalle.Descripcion);
-        AddParam(cmd, "@DetalleUM", detalle.DetalleUm);
-        AddParam(cmd, "@DetalleCantidad", detalle.DetalleCantidad);
-        AddParam(cmd, "@PrecioCosto", detalle.PrecioCosto);
-        AddParam(cmd, "@DetalleImporte", detalle.DetalleImporte);
-        AddParam(cmd, "@DetalleDescuento", detalle.DetalleDescuento);
-        AddParam(cmd, "@DetalleEstado", detalle.DetalleEstado);
-        AddParam(cmd, "@DescuentoB", detalle.DescuentoB);
-        AddParam(cmd, "@EstadoB", detalle.EstadoB);
-        AddParam(cmd, "@ValorUM", detalle.ValorUM);
-        cmd.ExecuteNonQuery();
-    }
+        for (var i = 0; i < detalles.Count; i++)
+        {
+            if (i > 0) sb.AppendLine(",");
+            sb.Append($"(@CompraId, @DetalleId{i}, @IdProducto{i}, @DetalleCodigo{i}, @Descripcion{i}, @DetalleUM{i}, @DetalleCantidad{i}, @PrecioCosto{i}, @DetalleImporte{i}, @DetalleDescuento{i}, @DetalleEstado{i}, @DescuentoB{i}, @EstadoB{i}, @ValorUM{i})");
+        }
 
-    private static void DeleteDetallesByCompra(long compraId, SqlConnection con, SqlTransaction tx)
-    {
-        const string sql = "DELETE FROM DetalleCompra WHERE CompraId = @CompraId";
-        using var cmd = new SqlCommand(sql, con, tx);
-        cmd.CommandTimeout = 300;
-        cmd.CommandType = CommandType.Text;
+        sb.AppendLine(") AS source (CompraId, DetalleId, IdProducto, DetalleCodigo, Descripcion, DetalleUM, DetalleCantidad, PrecioCosto, DetalleImporte, DetalleDescuento, DetalleEstado, DescuentoB, EstadoB, ValorUM)");
+        sb.AppendLine("ON target.CompraId = source.CompraId AND target.DetalleId = source.DetalleId AND source.DetalleId > 0");
+        sb.AppendLine("WHEN MATCHED THEN UPDATE SET");
+        sb.AppendLine("    IdProducto = source.IdProducto,");
+        sb.AppendLine("    DetalleCodigo = source.DetalleCodigo,");
+        sb.AppendLine("    Descripcion = source.Descripcion,");
+        sb.AppendLine("    DetalleUM = source.DetalleUM,");
+        sb.AppendLine("    DetalleCantidad = source.DetalleCantidad,");
+        sb.AppendLine("    PrecioCosto = source.PrecioCosto,");
+        sb.AppendLine("    DetalleImporte = source.DetalleImporte,");
+        sb.AppendLine("    DetalleDescuento = source.DetalleDescuento,");
+        sb.AppendLine("    DetalleEstado = source.DetalleEstado,");
+        sb.AppendLine("    DescuentoB = source.DescuentoB,");
+        sb.AppendLine("    EstadoB = source.EstadoB,");
+        sb.AppendLine("    ValorUM = source.ValorUM");
+        sb.AppendLine("WHEN NOT MATCHED BY TARGET THEN");
+        sb.AppendLine("    INSERT (CompraId, IdProducto, DetalleCodigo, Descripcion, DetalleUM, DetalleCantidad, PrecioCosto, DetalleImporte, DetalleDescuento, DetalleEstado, DescuentoB, EstadoB, ValorUM)");
+        sb.AppendLine("    VALUES (source.CompraId, source.IdProducto, source.DetalleCodigo, source.Descripcion, source.DetalleUM, source.DetalleCantidad, source.PrecioCosto, source.DetalleImporte, source.DetalleDescuento, source.DetalleEstado, source.DescuentoB, source.EstadoB, source.ValorUM)");
+        sb.AppendLine("WHEN NOT MATCHED BY SOURCE AND target.CompraId = @CompraId THEN DELETE;");
+
+        await using var cmd = new SqlCommand(sb.ToString(), con, tx)
+        {
+            CommandTimeout = 300
+        };
         cmd.Parameters.AddWithValue("@CompraId", compraId);
-        cmd.ExecuteNonQuery();
+
+        for (var i = 0; i < detalles.Count; i++)
+        {
+            var detalle = detalles[i];
+            cmd.Parameters.AddWithValue($"@DetalleId{i}", detalle.DetalleId);
+            cmd.Parameters.AddWithValue($"@IdProducto{i}", (object?)detalle.IdProducto ?? DBNull.Value);
+            cmd.Parameters.AddWithValue($"@DetalleCodigo{i}", (object?)detalle.DetalleCodigo ?? DBNull.Value);
+            cmd.Parameters.AddWithValue($"@Descripcion{i}", (object?)detalle.Descripcion ?? DBNull.Value);
+            cmd.Parameters.AddWithValue($"@DetalleUM{i}", (object?)detalle.DetalleUm ?? DBNull.Value);
+            cmd.Parameters.AddWithValue($"@DetalleCantidad{i}", (object?)detalle.DetalleCantidad ?? DBNull.Value);
+            cmd.Parameters.AddWithValue($"@PrecioCosto{i}", (object?)detalle.PrecioCosto ?? DBNull.Value);
+            cmd.Parameters.AddWithValue($"@DetalleImporte{i}", (object?)detalle.DetalleImporte ?? DBNull.Value);
+            cmd.Parameters.AddWithValue($"@DetalleDescuento{i}", (object?)detalle.DetalleDescuento ?? DBNull.Value);
+            cmd.Parameters.AddWithValue($"@DetalleEstado{i}", (object?)detalle.DetalleEstado ?? DBNull.Value);
+            cmd.Parameters.AddWithValue($"@DescuentoB{i}", (object?)detalle.DescuentoB ?? DBNull.Value);
+            cmd.Parameters.AddWithValue($"@EstadoB{i}", (object?)detalle.EstadoB ?? DBNull.Value);
+            cmd.Parameters.AddWithValue($"@ValorUM{i}", (object?)detalle.ValorUM ?? DBNull.Value);
+        }
+
+        await cmd.ExecuteNonQueryAsync(cancellationToken);
     }
 
     private static void AddParameters(SqlCommand cmd, Compra compra)
@@ -480,5 +501,12 @@ public class CompraRepository : ICompra
             EstadoB = reader["EstadoB"]?.ToString(),
             ValorUM = reader["ValorUM"] == DBNull.Value ? null : Convert.ToDecimal(reader["ValorUM"])
         };
+    }
+
+    private static (int page, int pageSize) NormalizePagination(int page, int pageSize)
+    {
+        var normalizedPage = page < 1 ? 1 : page;
+        var normalizedPageSize = pageSize < 1 ? 1 : Math.Min(pageSize, 100);
+        return (normalizedPage, normalizedPageSize);
     }
 }

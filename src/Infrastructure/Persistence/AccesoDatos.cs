@@ -1,62 +1,50 @@
 using System.Data;
-using Microsoft.AspNetCore.Builder;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 
 namespace Ecommerce.Infrastructure.Persistence;
 
 public class AccesoDatos
 {
-    string? CadenaConexion { get; set; }
-    public AccesoDatos()
+    private readonly string _connectionString;
+    private readonly ILogger<AccesoDatos> _logger;
+
+    public AccesoDatos(IConfiguration configuration, ILogger<AccesoDatos> logger)
     {
-        var builder = WebApplication.CreateBuilder();
-        CadenaConexion = builder.Configuration.GetConnectionString("DefaultConnection");
-    }
-    public string ejecutarComando(string NombreSP, string parametroNombre = "", string parametroValor = "")
-    {
-        string? rpta = "";
-        using (SqlConnection con = new SqlConnection(CadenaConexion))
-        {
-            try
-            {
-                if (con.State == ConnectionState.Open) con.Close();
-                con.Open();
-                SqlCommand cmd = new SqlCommand(NombreSP, con);
-                cmd.CommandTimeout = 300;
-                cmd.CommandType = CommandType.StoredProcedure;
-                if (!String.IsNullOrEmpty(parametroNombre) && !String.IsNullOrEmpty(parametroValor))
-                {
-                    cmd.Parameters.AddWithValue(parametroNombre, parametroValor);
-                }
-                object data = cmd.ExecuteScalar();
-                con.Close();
-                if (data != null) rpta = data.ToString();
-            }
-            catch (Exception ex)
-            {
-                ex.ToString();
-            }
-        }
-        return rpta!;
+        _connectionString = configuration.GetConnectionString("DefaultConnection")
+            ?? throw new InvalidOperationException("Missing connection string: DefaultConnection");
+        _logger = logger;
     }
 
-    public string ejecutarConsulta(string consulta)
+    public async Task<string> EjecutarComandoAsync(
+        string nombreSp,
+        string parametroNombre = "",
+        string parametroValor = "",
+        CancellationToken cancellationToken = default)
     {
-        string? rpta = "";
-        using (SqlConnection con = new SqlConnection(CadenaConexion))
+        await using var con = new SqlConnection(_connectionString);
+        await using var cmd = new SqlCommand(nombreSp, con)
         {
-            try
-            {
-                if (con.State == ConnectionState.Open) con.Close();
-                con.Open();
-                SqlCommand cmd = new SqlCommand(consulta, con);
-                cmd.CommandType = CommandType.Text;
-                object data = cmd.ExecuteScalar();
-                if (data != null) rpta = data.ToString();
-            }
-            catch (Exception ex) { ex.ToString(); }
+            CommandTimeout = 300,
+            CommandType = CommandType.StoredProcedure
+        };
+
+        if (!string.IsNullOrWhiteSpace(parametroNombre))
+        {
+            cmd.Parameters.AddWithValue(parametroNombre, (object?)parametroValor ?? DBNull.Value);
         }
-        return rpta!;
+
+        try
+        {
+            await con.OpenAsync(cancellationToken);
+            var result = await cmd.ExecuteScalarAsync(cancellationToken);
+            return result?.ToString() ?? string.Empty;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Stored procedure execution failed: {StoredProcedure}", nombreSp);
+            throw;
+        }
     }
 }

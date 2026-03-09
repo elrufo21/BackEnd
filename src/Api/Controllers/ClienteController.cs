@@ -16,35 +16,39 @@ public class ClienteController: ControllerBase
         _mediator = mediador;
     }
 
-    [AllowAnonymous]
+    [Authorize]
     [HttpPost("register", Name = "RegisterCliente")]
     [ProducesResponseType((int)HttpStatusCode.OK)]
-    public IActionResult RegisterCliente([FromBody] Cliente cliente)
+    public async Task<IActionResult> RegisterCliente([FromBody] Cliente cliente, CancellationToken cancellationToken)
     {
-        return Ok(_mediator.Insertar(cliente));
+        return Ok(await _mediator.InsertarAsync(cliente, cancellationToken));
     }
     
-    [AllowAnonymous]
+    [Authorize]
     [HttpDelete("{id}", Name = "EliminarCliente")]
     [ProducesResponseType((int)HttpStatusCode.OK)]
-    public IActionResult EliminarCliente(long id)
+    public async Task<IActionResult> EliminarCliente(long id, CancellationToken cancellationToken)
     {
-        return Ok(_mediator.Eliminar(id));
+        return Ok(await _mediator.EliminarAsync(id, cancellationToken));
     }
 
     [AllowAnonymous]
     [HttpGet("list", Name = "GetClienteList")]
     [ProducesResponseType(typeof(IReadOnlyList<Cliente>), (int)HttpStatusCode.OK)]
-    public ActionResult<IReadOnlyList<Cliente>> GetClienteList([FromQuery] string? estado = "ACTIVO")
+    public async Task<ActionResult<IReadOnlyList<Cliente>>> GetClienteList(
+        [FromQuery] string? estado = "ACTIVO",
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 50,
+        CancellationToken cancellationToken = default)
     {
-        return Ok(_mediator.Listar(estado));
+        return Ok(await _mediator.ListarAsync(estado, page, pageSize, cancellationToken));
     }
 
     [AllowAnonymous]
     [HttpGet(Name = "GetListCombo")]
     [ProducesResponseType(typeof(string), (int)HttpStatusCode.OK)]
-    public ActionResult<string> ListarCombo()
+    public async Task<ActionResult<string>> ListarCombo(CancellationToken cancellationToken)
     {
-        return Ok(_mediator.ListarCombo());
+        return Ok(await _mediator.ListarComboAsync(cancellationToken));
     }
 }

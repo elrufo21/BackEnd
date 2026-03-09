@@ -1,7 +1,7 @@
 using System.Data;
 using Ecommerce.Application.Contracts.Areas;
 using Ecommerce.Domain;
-using Microsoft.AspNetCore.Builder;
+using Ecommerce.Infrastructure.Persistence;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 
@@ -10,49 +10,58 @@ namespace Ecommerce.Infrastructure.Persistence.Repositories;
 public class AreaRepository : IArea
 {
     private readonly string _connectionString;
-    AccesoDatos daSQL = new AccesoDatos();
+    private readonly AccesoDatos _accesoDatos;
 
-    public AreaRepository()
+    public AreaRepository(IConfiguration configuration, AccesoDatos accesoDatos)
     {
-        var builder = WebApplication.CreateBuilder();
-        _connectionString = builder.Configuration.GetConnectionString("DefaultConnection")!;
+        _connectionString = configuration.GetConnectionString("DefaultConnection")
+            ?? throw new InvalidOperationException("Missing connection string: DefaultConnection");
+        _accesoDatos = accesoDatos;
     }
 
-    public string Insertar(Area area)
+    public async Task<string> InsertarAsync(Area area, CancellationToken cancellationToken = default)
     {
-        string rpt = string.Empty;
-        string xvalue=string.Empty;
-        xvalue=area.AreaId+"|"+area.AreaNombre?.Trim();
-        rpt = daSQL.ejecutarComando("uspInsertarArea", "@Data",xvalue);
-        if (string.IsNullOrEmpty(rpt)) rpt = "error";
-        return rpt;
+        var data = $"{area.AreaId}|{area.AreaNombre?.Trim()}";
+        var result = await _accesoDatos.EjecutarComandoAsync("uspInsertarArea", "@Data", data, cancellationToken);
+        return string.IsNullOrWhiteSpace(result) ? "error" : result;
     }
-    
-    public bool Eliminar(int id)
+
+    public async Task<bool> EliminarAsync(int id, CancellationToken cancellationToken = default)
     {
         const string sql = "uspEliminarArea";
-        using var con = new SqlConnection(_connectionString);
-        using var cmd = new SqlCommand(sql, con);
-        cmd.CommandTimeout = 300;
-        cmd.CommandType = CommandType.StoredProcedure;
+        await using var con = new SqlConnection(_connectionString);
+        await using var cmd = new SqlCommand(sql, con)
+        {
+            CommandTimeout = 300,
+            CommandType = CommandType.StoredProcedure
+        };
         cmd.Parameters.AddWithValue("@Id", id);
-        if (con.State == ConnectionState.Open) con.Close();
-        con.Open();
-        var rows = cmd.ExecuteNonQuery();
+        await con.OpenAsync(cancellationToken);
+        var rows = await cmd.ExecuteNonQueryAsync(cancellationToken);
         return rows > 0;
     }
 
-    public IReadOnlyList<EGeneral> Listar()
+    public async Task<IReadOnlyList<EGeneral>> ListarAsync(int page = 1, int pageSize = 50, CancellationToken cancellationToken = default)
     {
-        var lista = new List<EGeneral>();
-        const string sql = "SELECT AreaId, AreaNombre FROM Area order by 1 asc";
+        (page, pageSize) = NormalizePagination(page, pageSize);
 
-        using var con = new SqlConnection(_connectionString);
-        using var cmd = new SqlCommand(sql, con);
-        if (con.State == ConnectionState.Open) con.Close();
-        con.Open();
-        using var reader = cmd.ExecuteReader();
-        while (reader.Read())
+        const string sql = """
+            SELECT AreaId, AreaNombre
+            FROM Area
+            ORDER BY AreaId ASC
+            OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;
+            """;
+
+        await using var con = new SqlConnection(_connectionString);
+        await using var cmd = new SqlCommand(sql, con);
+        cmd.Parameters.AddWithValue("@Offset", (page - 1) * pageSize);
+        cmd.Parameters.AddWithValue("@PageSize", pageSize);
+
+        await con.OpenAsync(cancellationToken);
+        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+
+        var lista = new List<EGeneral>();
+        while (await reader.ReadAsync(cancellationToken))
         {
             lista.Add(new EGeneral
             {
@@ -62,5 +71,12 @@ public class AreaRepository : IArea
         }
 
         return lista;
+    }
+
+    private static (int page, int pageSize) NormalizePagination(int page, int pageSize)
+    {
+        var normalizedPage = page < 1 ? 1 : page;
+        var normalizedPageSize = pageSize < 1 ? 1 : Math.Min(pageSize, 100);
+        return (normalizedPage, normalizedPageSize);
     }
 }

@@ -1,9 +1,8 @@
 using System.Data;
-using System.Linq;
+using System.Text;
 using Ecommerce.Application.Contracts.NotaPedido;
 using Ecommerce.Domain;
 using Ecommerce.Infrastructure.Persistence;
-using Microsoft.AspNetCore.Builder;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 
@@ -12,94 +11,94 @@ namespace Ecommerce.Infrastructure.Persistence.Repositories;
 public class NotaPedidoRepository : INotaPedido
 {
     private readonly string _connectionString;
-    private readonly AccesoDatos _accesoDatos = new();
+    private readonly AccesoDatos _accesoDatos;
 
-    public NotaPedidoRepository()
+    public NotaPedidoRepository(IConfiguration configuration, AccesoDatos accesoDatos)
     {
-        var builder = WebApplication.CreateBuilder();
-        _connectionString = builder.Configuration.GetConnectionString("DefaultConnection")!;
+        _connectionString = configuration.GetConnectionString("DefaultConnection")
+            ?? throw new InvalidOperationException("Missing connection string: DefaultConnection");
+        _accesoDatos = accesoDatos;
     }
 
-    public string RegistrarOrden(string data)
+    public async Task<string> RegistrarOrdenAsync(string data, CancellationToken cancellationToken = default)
     {
-        var rpt = _accesoDatos.ejecutarComando("uspinsertarNotaB", "@ListaOrden", data);
-        return string.IsNullOrEmpty(rpt) ? "error" : rpt;
+        var result = await _accesoDatos.EjecutarComandoAsync("uspinsertarNotaB", "@ListaOrden", data, cancellationToken);
+        return string.IsNullOrWhiteSpace(result) ? "error" : result;
     }
 
-    public string EditarOrden(string data)
+    public async Task<string> EditarOrdenAsync(string data, CancellationToken cancellationToken = default)
     {
-        var rpt = _accesoDatos.ejecutarComando("uspEditarNotaPedido", "@ListaOrden", data);
-        return string.IsNullOrEmpty(rpt) ? "error" : rpt;
+        var result = await _accesoDatos.EjecutarComandoAsync("uspEditarNotaPedido", "@ListaOrden", data, cancellationToken);
+        return string.IsNullOrWhiteSpace(result) ? "error" : result;
     }
 
-    public string Insertar(NotaPedido notaPedido)
+    public async Task<string> InsertarAsync(NotaPedido notaPedido, CancellationToken cancellationToken = default)
     {
-        using var con = new SqlConnection(_connectionString);
-        con.Open();
-        using var tx = con.BeginTransaction();
+        await using var con = new SqlConnection(_connectionString);
+        await con.OpenAsync(cancellationToken);
+        await using var tx = (SqlTransaction)await con.BeginTransactionAsync(cancellationToken);
 
-        var notaId = InsertOrUpdateNota(notaPedido, con, tx);
+        var notaId = await InsertOrUpdateNotaAsync(notaPedido, con, tx, cancellationToken);
         if (notaId <= 0)
         {
-            tx.Rollback();
+            await tx.RollbackAsync(cancellationToken);
             return notaPedido.NotaId > 0 ? "NOT_FOUND" : "error";
         }
 
-        tx.Commit();
+        await tx.CommitAsync(cancellationToken);
         return notaPedido.NotaId > 0 ? "UPDATED" : notaId.ToString();
     }
 
-    public string InsertarConDetalle(NotaPedido notaPedido, IEnumerable<DetalleNota> detalles)
+    public async Task<string> InsertarConDetalleAsync(NotaPedido notaPedido, IEnumerable<DetalleNota> detalles, CancellationToken cancellationToken = default)
     {
-        using var con = new SqlConnection(_connectionString);
-        con.Open();
-        using var tx = con.BeginTransaction();
+        await using var con = new SqlConnection(_connectionString);
+        await con.OpenAsync(cancellationToken);
+        await using var tx = (SqlTransaction)await con.BeginTransactionAsync(cancellationToken);
 
-        var notaId = InsertOrUpdateNota(notaPedido, con, tx);
+        var notaId = await InsertOrUpdateNotaAsync(notaPedido, con, tx, cancellationToken);
         if (notaId <= 0)
         {
-            tx.Rollback();
+            await tx.RollbackAsync(cancellationToken);
             return notaPedido.NotaId > 0 ? "NOT_FOUND" : "error";
         }
 
         var detalleList = detalles?.ToList() ?? new List<DetalleNota>();
-        DeleteDetallesByNota(notaId, con, tx);
         foreach (var detalle in detalleList)
         {
             detalle.NotaId = notaId;
-            InsertDetalle(detalle, con, tx);
         }
+        await MergeDetallesNotaAsync(notaId, detalleList, con, tx, cancellationToken);
 
-        tx.Commit();
+        await tx.CommitAsync(cancellationToken);
         return notaId.ToString();
     }
 
-    public bool Eliminar(long id)
+    public async Task<bool> EliminarAsync(long id, CancellationToken cancellationToken = default)
     {
-        using var con = new SqlConnection(_connectionString);
-        con.Open();
-        using var tx = con.BeginTransaction();
+        await using var con = new SqlConnection(_connectionString);
+        await con.OpenAsync(cancellationToken);
+        await using var tx = (SqlTransaction)await con.BeginTransactionAsync(cancellationToken);
 
-        DeleteDetallesByNota(id, con, tx);
+        const string sqlDeleteDetalles = "DELETE FROM DetallePedido WHERE NotaId = @NotaId";
+        await using var cmdDet = new SqlCommand(sqlDeleteDetalles, con, tx);
+        cmdDet.Parameters.AddWithValue("@NotaId", id);
+        await cmdDet.ExecuteNonQueryAsync(cancellationToken);
 
-        const string sql = "DELETE FROM NotaPedido WHERE NotaId = @Id";
-        using var cmd = new SqlCommand(sql, con, tx);
-        cmd.CommandTimeout = 300;
-        cmd.CommandType = CommandType.Text;
+        const string sqlDeleteNota = "DELETE FROM NotaPedido WHERE NotaId = @Id";
+        await using var cmd = new SqlCommand(sqlDeleteNota, con, tx);
         cmd.Parameters.AddWithValue("@Id", id);
-
-        var rows = cmd.ExecuteNonQuery();
+        var rows = await cmd.ExecuteNonQueryAsync(cancellationToken);
         if (rows > 0)
         {
-            tx.Commit();
+            await tx.CommitAsync(cancellationToken);
             return true;
         }
 
-        tx.Rollback();
+        await tx.RollbackAsync(cancellationToken);
         return false;
     }
 
-    public NotaPedido? ObtenerPorId(long id)
+    public async Task<NotaPedido?> ObtenerPorIdAsync(long id, CancellationToken cancellationToken = default)
     {
         const string sql = @"SELECT NotaId,
                                     NotaDocu,
@@ -138,80 +137,75 @@ public class NotaPedidoRepository : INotaPedido
                              FROM NotaPedido
                              WHERE NotaId = @Id";
 
-        using var con = new SqlConnection(_connectionString);
-        using var cmd = new SqlCommand(sql, con);
-        cmd.CommandTimeout = 300;
-        cmd.CommandType = CommandType.Text;
+        await using var con = new SqlConnection(_connectionString);
+        await using var cmd = new SqlCommand(sql, con);
         cmd.Parameters.AddWithValue("@Id", id);
-        if (con.State == ConnectionState.Open) con.Close();
-        con.Open();
-        using var reader = cmd.ExecuteReader();
-        return reader.Read() ? Map(reader) : null;
+        await con.OpenAsync(cancellationToken);
+        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken) ? Map(reader) : null;
     }
 
-    public IReadOnlyList<NotaPedido> ListarCrud(string? estado = null)
+    public async Task<IReadOnlyList<NotaPedido>> ListarCrudAsync(string? estado = null, int page = 1, int pageSize = 50, CancellationToken cancellationToken = default)
     {
-        var sql = @"SELECT NotaId,
-                           NotaDocu,
-                           ClienteId,
-                           NotaFecha,
-                           NotaUsuario,
-                           NotaFormaPago,
-                           NotaCondicion,
-                           NotaFechaPago,
-                           NotaDireccion,
-                           NotaTelefono,
-                           NotaSubtotal,
-                           NotaMovilidad,
-                           NotaDescuento,
-                           NotaTotal,
-                           NotaAcuenta,
-                           NotaSaldo,
-                           NotaAdicional,
-                           NotaTarjeta,
-                           NotaPagar,
-                           NotaEstado,
-                           CompaniaId,
-                           NotaEntrega,
-                           ModificadoPor,
-                           FechaEdita,
-                           NotaConcepto,
-                           NotaSerie,
-                           NotaNumero,
-                           NotaGanancia,
-                           ICBPER,
-                           CajaId,
-                           EntidadBancaria,
-                           NroOperacion,
-                           Efectivo,
-                           Deposito
-                    FROM NotaPedido";
+        (page, pageSize) = NormalizePagination(page, pageSize);
+        const string sql = @"SELECT NotaId,
+                                    NotaDocu,
+                                    ClienteId,
+                                    NotaFecha,
+                                    NotaUsuario,
+                                    NotaFormaPago,
+                                    NotaCondicion,
+                                    NotaFechaPago,
+                                    NotaDireccion,
+                                    NotaTelefono,
+                                    NotaSubtotal,
+                                    NotaMovilidad,
+                                    NotaDescuento,
+                                    NotaTotal,
+                                    NotaAcuenta,
+                                    NotaSaldo,
+                                    NotaAdicional,
+                                    NotaTarjeta,
+                                    NotaPagar,
+                                    NotaEstado,
+                                    CompaniaId,
+                                    NotaEntrega,
+                                    ModificadoPor,
+                                    FechaEdita,
+                                    NotaConcepto,
+                                    NotaSerie,
+                                    NotaNumero,
+                                    NotaGanancia,
+                                    ICBPER,
+                                    CajaId,
+                                    EntidadBancaria,
+                                    NroOperacion,
+                                    Efectivo,
+                                    Deposito
+                             FROM NotaPedido
+                             WHERE (@Estado IS NULL OR NotaEstado = @Estado)
+                             ORDER BY NotaId DESC
+                             OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;";
 
-        using var con = new SqlConnection(_connectionString);
-        using var cmd = new SqlCommand(sql, con);
-        cmd.CommandTimeout = 300;
-        cmd.CommandType = CommandType.Text;
-        if (!string.IsNullOrWhiteSpace(estado))
-        {
-            cmd.CommandText += " WHERE NotaEstado = @Estado";
-            cmd.Parameters.AddWithValue("@Estado", estado);
-        }
+        await using var con = new SqlConnection(_connectionString);
+        await using var cmd = new SqlCommand(sql, con);
+        cmd.Parameters.AddWithValue("@Estado", (object?)estado ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@Offset", (page - 1) * pageSize);
+        cmd.Parameters.AddWithValue("@PageSize", pageSize);
+        await con.OpenAsync(cancellationToken);
+        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
 
-        cmd.CommandText += " ORDER BY NotaId DESC";
-
-        if (con.State == ConnectionState.Open) con.Close();
-        con.Open();
-        using var reader = cmd.ExecuteReader();
         var lista = new List<NotaPedido>();
-        while (reader.Read())
+        while (await reader.ReadAsync(cancellationToken))
         {
             lista.Add(Map(reader));
         }
         return lista;
     }
 
-    public IReadOnlyList<DetalleNota> ListarDetalle(long notaId)
+    public async Task<IReadOnlyList<DetalleNota>> ListarDetalleAsync(long notaId, int page = 1, int pageSize = 50, CancellationToken cancellationToken = default)
     {
+        (page, pageSize) = NormalizePagination(page, pageSize);
         const string sql = @"SELECT DetalleId,
                                     NotaId,
                                     IdProducto,
@@ -226,36 +220,38 @@ public class NotaPedidoRepository : INotaPedido
                                     ValorUM
                              FROM DetallePedido
                              WHERE NotaId = @NotaId
-                             ORDER BY DetalleId";
+                             ORDER BY DetalleId
+                             OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;";
 
-        using var con = new SqlConnection(_connectionString);
-        using var cmd = new SqlCommand(sql, con);
-        cmd.CommandTimeout = 300;
-        cmd.CommandType = CommandType.Text;
+        await using var con = new SqlConnection(_connectionString);
+        await using var cmd = new SqlCommand(sql, con);
         cmd.Parameters.AddWithValue("@NotaId", notaId);
-        if (con.State == ConnectionState.Open) con.Close();
-        con.Open();
-        using var reader = cmd.ExecuteReader();
+        cmd.Parameters.AddWithValue("@Offset", (page - 1) * pageSize);
+        cmd.Parameters.AddWithValue("@PageSize", pageSize);
+        await con.OpenAsync(cancellationToken);
+        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
         var lista = new List<DetalleNota>();
-        while (reader.Read())
+        while (await reader.ReadAsync(cancellationToken))
         {
             lista.Add(MapDetalle(reader));
         }
         return lista;
     }
 
-    public IReadOnlyList<EListaNota> Listar()
+    public async Task<IReadOnlyList<EListaNota>> ListarAsync(int page = 1, int pageSize = 50, CancellationToken cancellationToken = default)
     {
-        var lista = new List<EListaNota>();
-        var rpt = _accesoDatos.ejecutarComando("uspListaOrdenWeb");
-        if (!string.IsNullOrEmpty(rpt))
+        var result = await _accesoDatos.EjecutarComandoAsync("uspListaOrdenWeb", cancellationToken: cancellationToken);
+        if (string.IsNullOrWhiteSpace(result))
         {
-            lista = Cadena.AlistaCamposNota(rpt);
+            return new List<EListaNota>();
         }
-        return lista;
+
+        var list = Cadena.AlistaCamposNota(result);
+        (page, pageSize) = NormalizePagination(page, pageSize);
+        return list.Skip((page - 1) * pageSize).Take(pageSize).ToList();
     }
 
-    private long InsertOrUpdateNota(NotaPedido notaPedido, SqlConnection con, SqlTransaction tx)
+    private static async Task<long> InsertOrUpdateNotaAsync(NotaPedido notaPedido, SqlConnection con, SqlTransaction tx, CancellationToken cancellationToken)
     {
         if (notaPedido.NotaId > 0)
         {
@@ -295,145 +291,93 @@ public class NotaPedidoRepository : INotaPedido
                                            Deposito = @Deposito
                                        WHERE NotaId = @NotaId";
 
-            using var cmd = new SqlCommand(sqlUpdate, con, tx);
-            cmd.CommandTimeout = 300;
-            cmd.CommandType = CommandType.Text;
+            await using var cmd = new SqlCommand(sqlUpdate, con, tx);
             AddParameters(cmd, notaPedido);
             cmd.Parameters.AddWithValue("@NotaId", notaPedido.NotaId);
-            var rows = cmd.ExecuteNonQuery();
+            var rows = await cmd.ExecuteNonQueryAsync(cancellationToken);
             return rows > 0 ? notaPedido.NotaId : 0;
         }
-        else
+
+        const string sqlInsert = @"INSERT INTO NotaPedido
+                                    (NotaDocu, ClienteId, NotaFecha, NotaUsuario, NotaFormaPago, NotaCondicion,
+                                     NotaFechaPago, NotaDireccion, NotaTelefono, NotaSubtotal, NotaMovilidad,
+                                     NotaDescuento, NotaTotal, NotaAcuenta, NotaSaldo, NotaAdicional, NotaTarjeta,
+                                     NotaPagar, NotaEstado, CompaniaId, NotaEntrega, ModificadoPor, FechaEdita,
+                                     NotaConcepto, NotaSerie, NotaNumero, NotaGanancia, ICBPER, CajaId,
+                                     EntidadBancaria, NroOperacion, Efectivo, Deposito)
+                               VALUES (@NotaDocu, @ClienteId, @NotaFecha, @NotaUsuario, @NotaFormaPago, @NotaCondicion,
+                                       @NotaFechaPago, @NotaDireccion, @NotaTelefono, @NotaSubtotal, @NotaMovilidad,
+                                       @NotaDescuento, @NotaTotal, @NotaAcuenta, @NotaSaldo, @NotaAdicional, @NotaTarjeta,
+                                       @NotaPagar, @NotaEstado, @CompaniaId, @NotaEntrega, @ModificadoPor, @FechaEdita,
+                                       @NotaConcepto, @NotaSerie, @NotaNumero, @NotaGanancia, @ICBPER, @CajaId,
+                                       @EntidadBancaria, @NroOperacion, @Efectivo, @Deposito);
+                               SELECT SCOPE_IDENTITY();";
+
+        await using var insertCmd = new SqlCommand(sqlInsert, con, tx);
+        AddParameters(insertCmd, notaPedido);
+        var result = await insertCmd.ExecuteScalarAsync(cancellationToken);
+        return result == null ? 0 : Convert.ToInt64(result);
+    }
+
+    private static async Task MergeDetallesNotaAsync(long notaId, IReadOnlyList<DetalleNota> detalles, SqlConnection con, SqlTransaction tx, CancellationToken cancellationToken)
+    {
+        if (detalles.Count == 0)
         {
-            const string sqlInsert = @"INSERT INTO NotaPedido
-                                            (NotaDocu,
-                                             ClienteId,
-                                             NotaFecha,
-                                             NotaUsuario,
-                                             NotaFormaPago,
-                                             NotaCondicion,
-                                             NotaFechaPago,
-                                             NotaDireccion,
-                                             NotaTelefono,
-                                             NotaSubtotal,
-                                             NotaMovilidad,
-                                             NotaDescuento,
-                                             NotaTotal,
-                                             NotaAcuenta,
-                                             NotaSaldo,
-                                             NotaAdicional,
-                                             NotaTarjeta,
-                                             NotaPagar,
-                                             NotaEstado,
-                                             CompaniaId,
-                                             NotaEntrega,
-                                             ModificadoPor,
-                                             FechaEdita,
-                                             NotaConcepto,
-                                             NotaSerie,
-                                             NotaNumero,
-                                             NotaGanancia,
-                                             ICBPER,
-                                             CajaId,
-                                             EntidadBancaria,
-                                             NroOperacion,
-                                             Efectivo,
-                                             Deposito)
-                                       VALUES (@NotaDocu,
-                                               @ClienteId,
-                                               @NotaFecha,
-                                                @NotaUsuario,
-                                                @NotaFormaPago,
-                                                @NotaCondicion,
-                                                @NotaFechaPago,
-                                                @NotaDireccion,
-                                                @NotaTelefono,
-                                               @NotaSubtotal,
-                                               @NotaMovilidad,
-                                               @NotaDescuento,
-                                               @NotaTotal,
-                                               @NotaAcuenta,
-                                               @NotaSaldo,
-                                               @NotaAdicional,
-                                               @NotaTarjeta,
-                                               @NotaPagar,
-                                               @NotaEstado,
-                                               @CompaniaId,
-                                               @NotaEntrega,
-                                               @ModificadoPor,
-                                               @FechaEdita,
-                                               @NotaConcepto,
-                                               @NotaSerie,
-                                               @NotaNumero,
-                                               @NotaGanancia,
-                                               @ICBPER,
-                                               @CajaId,
-                                               @EntidadBancaria,
-                                               @NroOperacion,
-                                               @Efectivo,
-                                               @Deposito);
-                                       SELECT SCOPE_IDENTITY();";
-
-            using var cmd = new SqlCommand(sqlInsert, con, tx);
-            cmd.CommandTimeout = 300;
-            cmd.CommandType = CommandType.Text;
-            AddParameters(cmd, notaPedido);
-            var result = cmd.ExecuteScalar();
-            return result == null ? 0 : Convert.ToInt64(result);
+            const string deleteSql = "DELETE FROM DetallePedido WHERE NotaId = @NotaId";
+            await using var deleteCmd = new SqlCommand(deleteSql, con, tx);
+            deleteCmd.Parameters.AddWithValue("@NotaId", notaId);
+            await deleteCmd.ExecuteNonQueryAsync(cancellationToken);
+            return;
         }
-    }
 
-    private static void InsertDetalle(DetalleNota detalle, SqlConnection con, SqlTransaction tx)
-    {
-        const string sql = @"INSERT INTO DetallePedido
-                                    (NotaId,
-                                     IdProducto,
-                                     DetalleCantidad,
-                                     DetalleUm,
-                                     DetalleDescripcion,
-                                     DetalleCosto,
-                                     DetallePrecio,
-                                     DetalleImporte,
-                                     DetalleEstado,
-                                     CantidadSaldo,
-                                     ValorUM)
-                             VALUES (@NotaId,
-                                     @IdProducto,
-                                     @DetalleCantidad,
-                                     @DetalleUm,
-                                     @DetalleDescripcion,
-                                     @DetalleCosto,
-                                     @DetallePrecio,
-                                     @DetalleImporte,
-                                     @DetalleEstado,
-                                     @CantidadSaldo,
-                                     @ValorUM)";
+        var sb = new StringBuilder();
+        sb.AppendLine("MERGE DetallePedido AS target");
+        sb.AppendLine("USING (VALUES");
 
-        using var cmd = new SqlCommand(sql, con, tx);
-        cmd.CommandTimeout = 300;
-        cmd.CommandType = CommandType.Text;
-        AddParam(cmd, "@NotaId", detalle.NotaId);
-        AddParam(cmd, "@IdProducto", detalle.IdProducto);
-        AddParam(cmd, "@DetalleCantidad", detalle.DetalleCantidad);
-        AddParam(cmd, "@DetalleUm", detalle.DetalleUm);
-        AddParam(cmd, "@DetalleDescripcion", detalle.DetalleDescripcion);
-        AddParam(cmd, "@DetalleCosto", detalle.DetalleCosto);
-        AddParam(cmd, "@DetallePrecio", detalle.DetallePrecio);
-        AddParam(cmd, "@DetalleImporte", detalle.DetalleImporte);
-        AddParam(cmd, "@DetalleEstado", detalle.DetalleEstado);
-        AddParam(cmd, "@CantidadSaldo", detalle.CantidadSaldo);
-        AddParam(cmd, "@ValorUM", detalle.ValorUM);
-        cmd.ExecuteNonQuery();
-    }
+        for (var i = 0; i < detalles.Count; i++)
+        {
+            if (i > 0) sb.AppendLine(",");
+            sb.Append($"(@NotaId, @DetalleId{i}, @IdProducto{i}, @DetalleCantidad{i}, @DetalleUm{i}, @DetalleDescripcion{i}, @DetalleCosto{i}, @DetallePrecio{i}, @DetalleImporte{i}, @DetalleEstado{i}, @CantidadSaldo{i}, @ValorUM{i})");
+        }
 
-    private static void DeleteDetallesByNota(long notaId, SqlConnection con, SqlTransaction tx)
-    {
-        const string sql = "DELETE FROM DetallePedido WHERE NotaId = @NotaId";
-        using var cmd = new SqlCommand(sql, con, tx);
-        cmd.CommandTimeout = 300;
-        cmd.CommandType = CommandType.Text;
+        sb.AppendLine(") AS source (NotaId, DetalleId, IdProducto, DetalleCantidad, DetalleUm, DetalleDescripcion, DetalleCosto, DetallePrecio, DetalleImporte, DetalleEstado, CantidadSaldo, ValorUM)");
+        sb.AppendLine("ON target.NotaId = source.NotaId AND target.DetalleId = source.DetalleId AND source.DetalleId > 0");
+        sb.AppendLine("WHEN MATCHED THEN UPDATE SET");
+        sb.AppendLine("    IdProducto = source.IdProducto,");
+        sb.AppendLine("    DetalleCantidad = source.DetalleCantidad,");
+        sb.AppendLine("    DetalleUm = source.DetalleUm,");
+        sb.AppendLine("    DetalleDescripcion = source.DetalleDescripcion,");
+        sb.AppendLine("    DetalleCosto = source.DetalleCosto,");
+        sb.AppendLine("    DetallePrecio = source.DetallePrecio,");
+        sb.AppendLine("    DetalleImporte = source.DetalleImporte,");
+        sb.AppendLine("    DetalleEstado = source.DetalleEstado,");
+        sb.AppendLine("    CantidadSaldo = source.CantidadSaldo,");
+        sb.AppendLine("    ValorUM = source.ValorUM");
+        sb.AppendLine("WHEN NOT MATCHED BY TARGET THEN");
+        sb.AppendLine("    INSERT (NotaId, IdProducto, DetalleCantidad, DetalleUm, DetalleDescripcion, DetalleCosto, DetallePrecio, DetalleImporte, DetalleEstado, CantidadSaldo, ValorUM)");
+        sb.AppendLine("    VALUES (source.NotaId, source.IdProducto, source.DetalleCantidad, source.DetalleUm, source.DetalleDescripcion, source.DetalleCosto, source.DetallePrecio, source.DetalleImporte, source.DetalleEstado, source.CantidadSaldo, source.ValorUM)");
+        sb.AppendLine("WHEN NOT MATCHED BY SOURCE AND target.NotaId = @NotaId THEN DELETE;");
+
+        await using var cmd = new SqlCommand(sb.ToString(), con, tx);
         cmd.Parameters.AddWithValue("@NotaId", notaId);
-        cmd.ExecuteNonQuery();
+
+        for (var i = 0; i < detalles.Count; i++)
+        {
+            var detalle = detalles[i];
+            cmd.Parameters.AddWithValue($"@DetalleId{i}", detalle.DetalleId);
+            cmd.Parameters.AddWithValue($"@IdProducto{i}", (object?)detalle.IdProducto ?? DBNull.Value);
+            cmd.Parameters.AddWithValue($"@DetalleCantidad{i}", (object?)detalle.DetalleCantidad ?? DBNull.Value);
+            cmd.Parameters.AddWithValue($"@DetalleUm{i}", (object?)detalle.DetalleUm ?? DBNull.Value);
+            cmd.Parameters.AddWithValue($"@DetalleDescripcion{i}", (object?)detalle.DetalleDescripcion ?? DBNull.Value);
+            cmd.Parameters.AddWithValue($"@DetalleCosto{i}", (object?)detalle.DetalleCosto ?? DBNull.Value);
+            cmd.Parameters.AddWithValue($"@DetallePrecio{i}", (object?)detalle.DetallePrecio ?? DBNull.Value);
+            cmd.Parameters.AddWithValue($"@DetalleImporte{i}", (object?)detalle.DetalleImporte ?? DBNull.Value);
+            cmd.Parameters.AddWithValue($"@DetalleEstado{i}", (object?)detalle.DetalleEstado ?? DBNull.Value);
+            cmd.Parameters.AddWithValue($"@CantidadSaldo{i}", (object?)detalle.CantidadSaldo ?? DBNull.Value);
+            cmd.Parameters.AddWithValue($"@ValorUM{i}", (object?)detalle.ValorUM ?? DBNull.Value);
+        }
+
+        await cmd.ExecuteNonQueryAsync(cancellationToken);
     }
 
     private static void AddParameters(SqlCommand cmd, NotaPedido notaPedido)
@@ -525,9 +469,9 @@ public class NotaPedidoRepository : INotaPedido
         if (value is string s)
         {
             if (string.IsNullOrWhiteSpace(s)) return null;
-            if (DateTime.TryParse(s, out var parsed)) return parsed;
-            return null;
+            return DateTime.TryParse(s, out var parsed) ? parsed : null;
         }
+
         try
         {
             return Convert.ToDateTime(value);
@@ -555,5 +499,12 @@ public class NotaPedidoRepository : INotaPedido
             CantidadSaldo = reader["CantidadSaldo"] == DBNull.Value ? null : Convert.ToDecimal(reader["CantidadSaldo"]),
             ValorUM = reader["ValorUM"] == DBNull.Value ? null : Convert.ToDecimal(reader["ValorUM"])
         };
+    }
+
+    private static (int page, int pageSize) NormalizePagination(int page, int pageSize)
+    {
+        var normalizedPage = page < 1 ? 1 : page;
+        var normalizedPageSize = pageSize < 1 ? 1 : Math.Min(pageSize, 100);
+        return (normalizedPage, normalizedPageSize);
     }
 }

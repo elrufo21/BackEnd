@@ -3,10 +3,21 @@ namespace Ecommerce.Application.Contracts.Productos;
 
 public interface IProducto
 {
-    string Insertar(Producto producto);
-    bool Eliminar(long id);
-    Producto? ObtenerPorId(long id);
-    IReadOnlyList<Producto> ListarCrud(string? estado = "ACTIVO");
-    IReadOnlyList<EListaProducto> Listar();
-    IReadOnlyList<EListaProducto> BuscarProducto(string nombre);
+    Task<string> InsertarAsync(Producto producto, CancellationToken cancellationToken = default);
+    Task<bool> EliminarAsync(long id, CancellationToken cancellationToken = default);
+    Task<Producto?> ObtenerPorIdAsync(long id, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<Producto>> ListarCrudAsync(
+        string? estado = "ACTIVO",
+        int page = 1,
+        int pageSize = 50,
+        CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<EListaProducto>> ListarAsync(
+        int page = 1,
+        int pageSize = 50,
+        CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<EListaProducto>> BuscarProductoAsync(
+        string nombre,
+        int page = 1,
+        int pageSize = 50,
+        CancellationToken cancellationToken = default);
 }
