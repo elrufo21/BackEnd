@@ -8,6 +8,8 @@ public class EListaNota
     public string? Cliente { get; set; }
     public string? FormaPago { get; set; }
     public string? Total { get; set; }
+    public string? Acuenta { get; set; }
+    public string? Saldo { get; set; }
     public string? Usuario { get; set; }
     public string? Estado { get; set; }
 }

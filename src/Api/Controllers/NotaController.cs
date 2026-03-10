@@ -55,6 +55,25 @@ public class NotaController : ControllerBase
     }
 
     [AllowAnonymous]
+    [HttpGet("sp/{id:long}", Name = "GetNotaPedidoByStoredProcedure")]
+    [ProducesResponseType((int)HttpStatusCode.OK)]
+    public async Task<IActionResult> ObtenerNotaPedidoSp(long id, CancellationToken cancellationToken)
+    {
+        var resultado = await _mediator.ObtenerNotaPedidoSpAsync(id, cancellationToken);
+        if (string.Equals(resultado, "FORMATO_INVALIDO", StringComparison.OrdinalIgnoreCase))
+        {
+            return BadRequest(new { resultado });
+        }
+
+        if (string.IsNullOrWhiteSpace(resultado) || resultado == "~")
+        {
+            return NotFound(new { resultado = "~" });
+        }
+
+        return Ok(new { resultado });
+    }
+
+    [AllowAnonymous]
     [HttpGet("{id:long}/detalles", Name = "GetNotaPedidoDetalles")]
     [ProducesResponseType(typeof(IReadOnlyList<DetalleNota>), (int)HttpStatusCode.OK)]
     public async Task<ActionResult<IReadOnlyList<DetalleNota>>> ObtenerDetalles(
@@ -281,84 +300,37 @@ public class NotaController : ControllerBase
     {
         var detalleList = detalles == null ? new List<DetalleNota>() : new List<DetalleNota>(detalles);
 
-        var total = nota.NotaTotal ?? 0m;
-        var subtotal = nota.NotaSubtotal ?? 0m;
-        var movilidad = nota.NotaMovilidad ?? 0m;
-        var descuento = nota.NotaDescuento ?? 0m;
-        var adicional = nota.NotaAdicional ?? 0m;
-        var tarjeta = nota.NotaTarjeta ?? 0m;
-        var pagar = nota.NotaPagar ?? total;
-        var igv = total - subtotal;
-        var docuGravada = subtotal;
-        var docuDescuento = 0m;
-
         var headerFields = new List<string?>
         {
-            nota.NotaId > 0 ? nota.NotaId.ToString() : "0", // NotaId a editar
+            nota.NotaId > 0 ? nota.NotaId.ToString() : "0",
             string.IsNullOrWhiteSpace(nota.NotaDocu) ? "BOLETA" : nota.NotaDocu!,
-            nota.ClienteId?.ToString(),
-            nota.NotaUsuario,
-            nota.NotaFormaPago,
-            nota.NotaCondicion,
-            nota.NotaDireccion,
-            nota.NotaTelefono,
-            Format2(subtotal),
-            Format2(movilidad),
-            Format2(descuento),
-            Format2(total),
-            Format2(adicional),
-            Format2(tarjeta),
-            Format2(pagar),
-            nota.CompaniaId?.ToString(),
-            nota.NotaEntrega,
-            string.IsNullOrWhiteSpace(nota.ModificadoPor) ? nota.NotaUsuario : nota.ModificadoPor,
-            nota.NotaSerie,
-            nota.NotaNumero,
-            string.Empty, // Aviso
-            Format2(nota.NotaGanancia ?? 0m),
-            Letras.enletras(total.ToString("N2")) + "  SOLES",
-            Format2(0m), // DocuAdicional
-            nota.NotaConcepto,
-            Format2(nota.ICBPER ?? 0m),
-            Format2(docuGravada),
-            Format2(docuDescuento),
-            nota.CajaId?.ToString() ?? "0", // UsuarioId en SP, usamos CajaId/0 si no disponible
-            Format2(igv),
-            string.IsNullOrWhiteSpace(nota.EntidadBancaria) ? "-" : nota.EntidadBancaria,
-            nota.NroOperacion ?? string.Empty,
-            Format2(nota.Efectivo ?? pagar),
-            Format2(nota.Deposito ?? 0m),
-            string.Empty, // ClienteRazon
-            string.Empty, // ClienteRuc
-            string.Empty, // ClienteDni
-            string.Empty  // DireccionFiscal
+            nota.ClienteId?.ToString() ?? "0",
+            FormatDateForSql(nota.NotaFecha),
+            nota.NotaUsuario ?? string.Empty,
+            nota.NotaFormaPago ?? string.Empty,
+            nota.NotaCondicion ?? string.Empty
         };
 
-        var vdata = string.Join("|", headerFields) + "[";
+        var detailParts = new List<string>();
 
-        for (int i = 0; i < detalleList.Count; i++)
+        foreach (var item in detalleList)
         {
-            var item = detalleList[i];
             var detailFields = new[]
             {
-                item.DetalleId > 0 ? item.DetalleId.ToString() : "0",
                 Convert.ToInt32(item.IdProducto ?? 0).ToString(),
-                string.Empty, // CodigoPro (no disponible)
                 Format2(item.DetalleCantidad ?? 0m),
                 item.DetalleUm ?? string.Empty,
                 item.DetalleDescripcion ?? string.Empty,
-                Format4(item.DetalleCosto ?? 0m),
+                Format2(item.DetalleCosto ?? 0m),
                 Format2(item.DetallePrecio ?? 0m),
-            Format2(item.DetalleImporte ?? 0m),
-            item.DetalleEstado ?? "PENDIENTE",
-            Format4(item.ValorUM ?? 0m),
-            "E"
-        };
-            vdata += string.Join("|", detailFields);
-            if (i < detalleList.Count - 1) vdata += ";";
+                Format2(item.DetalleImporte ?? 0m),
+                item.DetalleEstado ?? "PENDIENTE",
+                "0"
+            };
+            detailParts.Add(string.Join("|", detailFields));
         }
-        vdata += "[";
-        return vdata;
+
+        return string.Join("|", headerFields) + "[" + string.Join(";", detailParts);
     }
 
     private string BuildOrdenPayload(JsonElement body)
@@ -520,89 +492,28 @@ public class NotaController : ControllerBase
         var productoArray = productoToken as JArray;
         var producto = productoToken as JObject ?? new JObject();
 
-        var notaId = GetFirstDecimal(res, 0m, "NotaId", "NotaIDBR", "NotaIdbr", "IDBR");
+        var notaId = Convert.ToInt32(GetFirstDecimal(res, 0m, "NotaId", "NotaIDBR", "NotaIdbr", "IDBR"));
         var docu = GetFirstString(res, "Documento", "NotaDocu", "Docu");
         if (string.IsNullOrWhiteSpace(docu)) docu = "BOLETA";
         var clienteId = GetFirstString(res, "ClienteId");
+        if (string.IsNullOrWhiteSpace(clienteId)) clienteId = "0";
+        var notaFecha = NormalizeDateValue(GetFirstString(res, "NotaFecha", "Fecha", "fecha", "notaFecha"));
         var usuario = GetFirstString(res, "Usuario", "NotaUsuario");
         var formaPago = GetFirstString(res, "FormaPago", "NotaFormaPago");
         var condicion = GetFirstString(res, "Condicion", "NotaCondicion");
-        var direccion = GetFirstString(res, "Direccion", "NotaDireccion");
-        var telefono = GetFirstString(res, "Telefono", "NotaTelefono");
-        var subtotal = GetFirstDecimal(res, 0m, "SubTotal", "NotaSubtotal", "DocuSubtotal", "DocuGravada");
-        var movilidad = GetFirstDecimal(res, 0m, "Movilidad", "NotaMovilidad");
-        var descuento = GetFirstDecimal(res, 0m, "Descuento", "NotaDescuento", "DocuDescuento");
-        var total = GetFirstDecimal(res, 0m, "Total", "NotaTotal");
-        var adicional = GetFirstDecimal(res, 0m, "Adicional", "NotaAdicional", "DocuAdicional");
-        var tarjeta = GetFirstDecimal(res, 0m, "Tarjeta", "NotaTarjeta");
-        var pagar = GetFirstDecimal(res, total, "Pagar", "NotaPagar", "PagoTotal");
-        var companiaId = GetFirstString(res, "CompaniaId");
-        var entrega = GetFirstString(res, "Entrega", "NotaEntrega");
-        var modificadoPor = GetFirstString(res, "ModificadoPor", "UsuarioModifica", "NotaUsuario");
-        var serie = GetFirstString(res, "NotaSerie", "Serie");
-        var numero = GetFirstString(res, "NotaNumero", "Numero");
-        var aviso = GetFirstString(res, "Aviso");
-        var ganancia = GetFirstDecimal(res, 0m, "Ganancia", "NotaGanancia");
-        var letra = Letras.enletras(total.ToString("N2")) + "  SOLES";
-        var icbper = GetFirstDecimal(res, 0m, "ICBPER");
-        var docuGravada = GetFirstDecimal(res, subtotal, "DocuGravada", "NotaSubtotal", "SubTotal");
-        var docuDescuento = GetFirstDecimal(res, 0m, "DocuDescuento", "NotaDescuento");
-        var usuarioId = GetFirstString(res, "UsuarioId", "CajaId");
-        var igv = GetFirstDecimal(res, total - subtotal, "IGV", "DocuIGV");
-        var entidadBancaria = GetFirstString(res, "EntidadBancaria");
-        if (string.IsNullOrWhiteSpace(entidadBancaria)) entidadBancaria = "-";
-        var nroOperacion = GetFirstString(res, "NroOperacion", "NumeroOperacion");
-        var efectivo = GetFirstDecimal(res, pagar, "Efectivo");
-        var deposito = GetFirstDecimal(res, 0m, "Deposito");
-        var clienteRazon = GetFirstString(res, "ClienteRazon", "ClienteRazonSocial", "RazonSocial");
-        var clienteRuc = GetFirstString(res, "ClienteRuc", "Ruc");
-        var clienteDni = GetFirstString(res, "ClienteDni", "Dni");
-        var direccionFiscal = GetFirstString(res, "DireccionFiscal", "ClienteDireccion", "Direccion");
 
         var headerFields = new List<string?>
         {
             notaId.ToString(),
             docu,
             clienteId,
+            notaFecha,
             usuario,
             formaPago,
-            condicion,
-            direccion,
-            telefono,
-            Format2(subtotal),
-            Format2(movilidad),
-            Format2(descuento),
-            Format2(total),
-            Format2(adicional),
-            Format2(tarjeta),
-            Format2(pagar),
-            companiaId,
-            entrega,
-            modificadoPor,
-            serie,
-            numero,
-            aviso,
-            Format2(ganancia),
-            letra,
-            Format2(0m), // DocuAdicional
-            GetFirstString(res, "NotaConcepto", "Concepto"),
-            Format2(icbper),
-            Format2(docuGravada),
-            Format2(docuDescuento),
-            string.IsNullOrWhiteSpace(usuarioId) ? "0" : usuarioId,
-            Format2(igv),
-            entidadBancaria,
-            nroOperacion,
-            Format2(efectivo),
-            Format2(deposito),
-            clienteRazon,
-            clienteRuc,
-            clienteDni,
-            direccionFiscal
+            condicion
         };
 
         var detailParts = new List<string>();
-        var guiaParts = new List<string>();
 
         var count = Convert.ToInt32(GetFirstDecimal(res, 0m, "Items"));
         if (count == 0)
@@ -624,53 +535,25 @@ public class NotaController : ControllerBase
             }
             if (itemToken == null) continue;
             var item = itemToken;
-            var cantidad = GetFirstDecimal(item, 0m, "cantidad", "DetalleCantidad");
-            var valorUm = GetFirstDecimal(item, 0m, "valorUM", "ValorUM");
-            var um = GetFirstString(item, "unidad", "DetalleUm");
 
             var detailFields = new[]
             {
-                Convert.ToInt32(GetFirstDecimal(item, 0m, "DetalleId", "detalleId")).ToString(),
                 Convert.ToInt32(GetFirstDecimal(item, 0m, "productId", "IdProducto")).ToString(),
-                GetFirstString(item, "codigoPro", "CodigoPro", "codigo", "Codigo"),
-                Format2(cantidad),
-                um,
+                Format2(GetFirstDecimal(item, 0m, "cantidad", "DetalleCantidad")),
+                GetFirstString(item, "unidad", "DetalleUm"),
                 GetFirstString(item, "producto", "DetalleDescripcion"),
-                Format4(GetFirstDecimal(item, 0m, "costo", "DetalleCosto")),
+                Format2(GetFirstDecimal(item, 0m, "costo", "DetalleCosto")),
                 Format2(GetFirstDecimal(item, 0m, "precio", "DetallePrecio")),
                 Format2(GetFirstDecimal(item, 0m, "importe", "DetalleImporte")),
                 string.IsNullOrWhiteSpace(GetFirstString(item, "DetalleEstado", "estado"))
                     ? "PENDIENTE"
                     : GetFirstString(item, "DetalleEstado", "estado"),
-                Format4(valorUm),
-                string.IsNullOrWhiteSpace(GetFirstString(item, "AplicaINV", "aplicaInv", "aplicaINV"))
-                    ? "E"
-                    : GetFirstString(item, "AplicaINV", "aplicaInv", "aplicaINV")
+                "0"
             };
             detailParts.Add(string.Join("|", detailFields));
-
-            var action = GetFirstString(item, "action", "Action");
-            if (!string.IsNullOrWhiteSpace(action))
-            {
-                // CantidadU: se envía 1 para que el SP calcule cantidadSalida = CantidadA * 1 * ValorUMU.
-                var guiaFields = new[]
-                {
-                    Format2(cantidad),
-                    Convert.ToInt32(GetFirstDecimal(item, 0m, "productId", "IdProducto")).ToString(),
-                    Format2(GetFirstDecimal(item, 1m, "cantidadU", "CantidadU")),
-                    um,
-                    Format4(valorUm),
-                    action
-                };
-                guiaParts.Add(string.Join("|", guiaFields));
-            }
         }
 
-        var vdata = string.Join("|", headerFields) + "[";
-        vdata += string.Join(";", detailParts);
-        vdata += "[";
-        vdata += string.Join(";", guiaParts);
-        return vdata;
+        return string.Join("|", headerFields) + "[" + string.Join(";", detailParts);
     }
 
     private static string Format2(decimal value)
@@ -681,6 +564,21 @@ public class NotaController : ControllerBase
     private static string Format4(decimal value)
     {
         return value.ToString("0.####", CultureInfo.InvariantCulture);
+    }
+
+    private static string FormatDateForSql(DateTime? value)
+    {
+        return (value ?? DateTime.Now).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+    }
+
+    private static string NormalizeDateValue(string rawDate)
+    {
+        if (DateTime.TryParse(rawDate, out var parsed))
+        {
+            return parsed.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        }
+
+        return DateTime.Now.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
     }
 
     private static string GetFirstString(dynamic obj, params string[] names)

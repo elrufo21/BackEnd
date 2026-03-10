@@ -404,3 +404,10 @@ c:\Users\User\Desktop\desarrollo-sgo\BackEnd\artifacts\api\Ecommerce.Api.deps.js
 c:\Users\User\Desktop\desarrollo-sgo\BackEnd\artifacts\api\Ecommerce.Api.runtimeconfig.json
 c:\Users\User\Desktop\desarrollo-sgo\BackEnd\artifacts\api\Ecommerce.Api.dll
 c:\Users\User\Desktop\desarrollo-sgo\BackEnd\artifacts\api\Ecommerce.Api.pdb
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\artifacts\build-api\appsettings.Development.json
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\artifacts\build-api\appsettings.json
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\artifacts\build-api\Ecommerce.Api.exe
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\artifacts\build-api\Ecommerce.Api.deps.json
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\artifacts\build-api\Ecommerce.Api.runtimeconfig.json
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\artifacts\build-api\Ecommerce.Api.dll
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\artifacts\build-api\Ecommerce.Api.pdb

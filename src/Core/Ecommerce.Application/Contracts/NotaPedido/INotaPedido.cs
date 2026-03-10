@@ -10,6 +10,7 @@ public interface INotaPedido
     Task<string> InsertarConDetalleAsync(NotaPedidoEntity notaPedido, IEnumerable<DetalleNota> detalles, CancellationToken cancellationToken = default);
     Task<bool> EliminarAsync(long id, CancellationToken cancellationToken = default);
     Task<NotaPedidoEntity?> ObtenerPorIdAsync(long id, CancellationToken cancellationToken = default);
+    Task<string> ObtenerNotaPedidoSpAsync(long id, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<NotaPedidoEntity>> ListarCrudAsync(
         string? estado = null,
         int page = 1,

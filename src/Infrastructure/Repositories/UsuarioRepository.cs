@@ -56,6 +56,7 @@ public class UsuarioRepository : IUsuario
             Usuario = payload[3],
             CompaniaId = payload[4],
             RazonSocial = payload[5],
+            FechaVencimientoClave = payload.Length > 6 ? payload[6] : null,
             Token = _authService.CreateTokenA(expiresAtUtc.ToString("O")),
             ExpiresAtUtc = expiresAtUtc,
             ExpiresInSeconds = expiresInSeconds

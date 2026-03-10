@@ -84,18 +84,38 @@ public static class Cadena
         for (int i = 0; i < nRegistros; i++)
         {
             campos = registros[i].Split('|');
-            if (campos[0] == "~") break;
-            else lista.Add(new EListaNota
+            if (campos.Length == 0 || campos[0] == "~") break;
+            if (campos.Length >= 8)
             {
-                NotaId = campos[0],
-                Documento = campos[1],
-                Fecha = campos[2],
-                Cliente = campos[3],
-                FormaPago = campos[4],
-                Total = campos[5],
-                Usuario = campos[6],
-                Estado = campos[7]
-            });
+                lista.Add(new EListaNota
+                {
+                    NotaId = campos[0],
+                    Documento = campos[1],
+                    Fecha = campos[2],
+                    Cliente = campos[3],
+                    FormaPago = campos[4],
+                    Total = campos[5],
+                    Usuario = campos[6],
+                    Estado = campos[7]
+                });
+                continue;
+            }
+
+            if (campos.Length >= 7)
+            {
+                // Formato actual de dbo.listaNotaPedido:
+                // NotaId|Fecha|Cliente|Total|Acuenta|Saldo|Estado
+                lista.Add(new EListaNota
+                {
+                    NotaId = campos[0],
+                    Fecha = campos[1],
+                    Cliente = campos[2],
+                    Total = campos[3],
+                    Acuenta = campos[4],
+                    Saldo = campos[5],
+                    Estado = campos[6]
+                });
+            }
         }
         return lista;
     }

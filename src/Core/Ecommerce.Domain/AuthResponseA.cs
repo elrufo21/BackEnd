@@ -7,6 +7,7 @@ public class AuthResponseA
     public string? Usuario { get; set; }
     public string? CompaniaId { get; set; }
     public string? RazonSocial { get; set; }
+    public string? FechaVencimientoClave { get; set; }
     //public string? RUC { get; set; }
     //public string? UsuarioSerie { get; set; }
     //public string? Avatar { get; set; }

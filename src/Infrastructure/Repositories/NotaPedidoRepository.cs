@@ -28,7 +28,7 @@ public class NotaPedidoRepository : INotaPedido
 
     public async Task<string> EditarOrdenAsync(string data, CancellationToken cancellationToken = default)
     {
-        var result = await _accesoDatos.EjecutarComandoAsync("uspEditarNotaPedido", "@ListaOrden", data, cancellationToken);
+        var result = await _accesoDatos.EjecutarComandoAsync("uspEditarNotaPedido", "@Data", data, cancellationToken);
         return string.IsNullOrWhiteSpace(result) ? "error" : result;
     }
 
@@ -145,6 +145,17 @@ public class NotaPedidoRepository : INotaPedido
         return await reader.ReadAsync(cancellationToken) ? Map(reader) : null;
     }
 
+    public async Task<string> ObtenerNotaPedidoSpAsync(long id, CancellationToken cancellationToken = default)
+    {
+        var result = await _accesoDatos.EjecutarComandoAsync(
+            "uspObtenerNotaPedido",
+            "@Valores",
+            id.ToString(),
+            cancellationToken);
+
+        return string.IsNullOrWhiteSpace(result) ? "~" : result;
+    }
+
     public async Task<IReadOnlyList<NotaPedido>> ListarCrudAsync(string? estado = null, int page = 1, int pageSize = 50, CancellationToken cancellationToken = default)
     {
         (page, pageSize) = NormalizePagination(page, pageSize);
@@ -240,15 +251,13 @@ public class NotaPedidoRepository : INotaPedido
 
     public async Task<IReadOnlyList<EListaNota>> ListarAsync(int page = 1, int pageSize = 50, CancellationToken cancellationToken = default)
     {
-        var result = await _accesoDatos.EjecutarComandoAsync("uspListaOrdenWeb", cancellationToken: cancellationToken);
+        var result = await _accesoDatos.EjecutarComandoAsync("listaNotaPedido", cancellationToken: cancellationToken);
         if (string.IsNullOrWhiteSpace(result))
         {
             return new List<EListaNota>();
         }
 
-        var list = Cadena.AlistaCamposNota(result);
-        (page, pageSize) = NormalizePagination(page, pageSize);
-        return list.Skip((page - 1) * pageSize).Take(pageSize).ToList();
+        return Cadena.AlistaCamposNota(result);
     }
 
     private static async Task<long> InsertOrUpdateNotaAsync(NotaPedido notaPedido, SqlConnection con, SqlTransaction tx, CancellationToken cancellationToken)
