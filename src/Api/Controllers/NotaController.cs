@@ -25,11 +25,23 @@ public class NotaController : ControllerBase
     [HttpGet("list", Name = "GetNotaList")]
     [ProducesResponseType(typeof(IReadOnlyList<EListaNota>), (int)HttpStatusCode.OK)]
     public async Task<ActionResult<IReadOnlyList<EListaNota>>> ListarNota(
+        [FromQuery] DateTime? fechaInicio,
+        [FromQuery] DateTime? fechaFin,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 50,
         CancellationToken cancellationToken = default)
     {
-        return Ok(await _mediator.ListarAsync(page, pageSize, cancellationToken));
+        if (!fechaInicio.HasValue || !fechaFin.HasValue)
+        {
+            return BadRequest("Debe enviar fechaInicio y fechaFin en formato YYYY-MM-DD.");
+        }
+
+        if (fechaInicio.Value.Date > fechaFin.Value.Date)
+        {
+            return BadRequest("fechaInicio no puede ser mayor que fechaFin.");
+        }
+
+        return Ok(await _mediator.ListarAsync(fechaInicio.Value, fechaFin.Value, page, pageSize, cancellationToken));
     }
 
     [AllowAnonymous]

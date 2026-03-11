@@ -52,3 +52,6 @@ c:\Users\User\Desktop\desarrollo-sgo\BackEnd\artifacts\api\Ecommerce.Domain.pdb
 C:\Users\User\Desktop\desarrollo-sgo\BackEnd\artifacts\build-api\Ecommerce.Domain.deps.json
 C:\Users\User\Desktop\desarrollo-sgo\BackEnd\artifacts\build-api\Ecommerce.Domain.dll
 C:\Users\User\Desktop\desarrollo-sgo\BackEnd\artifacts\build-api\Ecommerce.Domain.pdb
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\artifacts\build-api-temp\Ecommerce.Domain.deps.json
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\artifacts\build-api-temp\Ecommerce.Domain.dll
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\artifacts\build-api-temp\Ecommerce.Domain.pdb

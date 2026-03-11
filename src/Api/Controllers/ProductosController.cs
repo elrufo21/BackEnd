@@ -133,14 +133,13 @@ public class ProductosController : ControllerBase
 
     [AllowAnonymous]
     [HttpGet("list", Name = "GetProductoList")]
-    [ProducesResponseType(typeof(IReadOnlyList<Producto>), (int)HttpStatusCode.OK)]
-    public async Task<ActionResult<IReadOnlyList<Producto>>> GetProductoList(
+    [ProducesResponseType(typeof(string), (int)HttpStatusCode.OK)]
+    public async Task<IActionResult> GetProductoList(
         [FromQuery] string? estado = "ACTIVO",
-        [FromQuery] int page = 1,
-        [FromQuery] int pageSize = 50,
         CancellationToken cancellationToken = default)
     {
-        return Ok(await _mediator.ListarCrudAsync(estado, page, pageSize, cancellationToken));
+        var raw = await _mediator.ListarCrudRawAsync(estado, cancellationToken);
+        return Content(raw, "text/plain");
     }
 
     [AllowAnonymous]

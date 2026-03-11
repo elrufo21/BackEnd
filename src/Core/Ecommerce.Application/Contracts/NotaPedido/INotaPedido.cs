@@ -21,5 +21,10 @@ public interface INotaPedido
         int page = 1,
         int pageSize = 50,
         CancellationToken cancellationToken = default);
-    Task<IReadOnlyList<EListaNota>> ListarAsync(int page = 1, int pageSize = 50, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<EListaNota>> ListarAsync(
+        DateTime fechaInicio,
+        DateTime fechaFin,
+        int page = 1,
+        int pageSize = 50,
+        CancellationToken cancellationToken = default);
 }
