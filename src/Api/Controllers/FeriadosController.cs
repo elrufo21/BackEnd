@@ -35,13 +35,10 @@ public class FeriadosController : ControllerBase
 
     [AllowAnonymous]
     [HttpGet("list", Name = "GetFeriadoList")]
-    [ProducesResponseType(typeof(IReadOnlyList<Feriado>), (int)HttpStatusCode.OK)]
-    public async Task<ActionResult<IReadOnlyList<Feriado>>> GetFeriadoList(
-        [FromQuery] int page = 1,
-        [FromQuery] int pageSize = 50,
-        CancellationToken cancellationToken = default)
+    [ProducesResponseType(typeof(string), (int)HttpStatusCode.OK)]
+    public async Task<ActionResult<string>> GetFeriadoList(CancellationToken cancellationToken = default)
     {
-        return Ok(await _mediator.ListarAsync(page, pageSize, cancellationToken));
+        return Ok(await _mediator.ListarAsync(cancellationToken));
     }
 
     [AllowAnonymous]

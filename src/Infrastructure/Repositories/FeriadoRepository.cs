@@ -56,31 +56,10 @@ public class FeriadoRepository : IFeriado
         return await reader.ReadAsync(cancellationToken) ? MapFeriado(reader) : null;
     }
 
-    public async Task<IReadOnlyList<Feriado>> ListarAsync(int page = 1, int pageSize = 50, CancellationToken cancellationToken = default)
+    public async Task<string> ListarAsync(CancellationToken cancellationToken = default)
     {
-        (page, pageSize) = NormalizePagination(page, pageSize);
-
-        const string sql = """
-            SELECT IdFeriado, Fecha, Motivo
-            FROM Feriado
-            ORDER BY IdFeriado DESC
-            OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;
-            """;
-
-        await using var con = new SqlConnection(_connectionString);
-        await using var cmd = new SqlCommand(sql, con);
-        cmd.Parameters.AddWithValue("@Offset", (page - 1) * pageSize);
-        cmd.Parameters.AddWithValue("@PageSize", pageSize);
-        await con.OpenAsync(cancellationToken);
-        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
-
-        var lista = new List<Feriado>();
-        while (await reader.ReadAsync(cancellationToken))
-        {
-            lista.Add(MapFeriado(reader));
-        }
-
-        return lista;
+        var result = await _accesoDatos.EjecutarComandoAsync("dbo.uspTraerFeriados", cancellationToken: cancellationToken);
+        return string.IsNullOrWhiteSpace(result) ? string.Empty : result;
     }
 
     private static Feriado MapFeriado(SqlDataReader reader)
@@ -93,10 +72,4 @@ public class FeriadoRepository : IFeriado
         };
     }
 
-    private static (int page, int pageSize) NormalizePagination(int page, int pageSize)
-    {
-        var normalizedPage = page < 1 ? 1 : page;
-        var normalizedPageSize = pageSize < 1 ? 1 : Math.Min(pageSize, 100);
-        return (normalizedPage, normalizedPageSize);
-    }
 }

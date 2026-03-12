@@ -78,3 +78,7 @@ C:\Users\User\Desktop\desarrollo-sgo\BackEnd\artifacts\build-api-temp\Ecommerce.
 C:\Users\User\Desktop\desarrollo-sgo\BackEnd\artifacts\build-api-temp\Ecommerce.Infrastructure.runtimeconfig.json
 C:\Users\User\Desktop\desarrollo-sgo\BackEnd\artifacts\build-api-temp\Ecommerce.Infrastructure.dll
 C:\Users\User\Desktop\desarrollo-sgo\BackEnd\artifacts\build-api-temp\Ecommerce.Infrastructure.pdb
+c:\Users\User\Desktop\desarrollo-sgo\BackEnd\artifacts\verify\Ecommerce.Infrastructure.deps.json
+c:\Users\User\Desktop\desarrollo-sgo\BackEnd\artifacts\verify\Ecommerce.Infrastructure.runtimeconfig.json
+c:\Users\User\Desktop\desarrollo-sgo\BackEnd\artifacts\verify\Ecommerce.Infrastructure.dll
+c:\Users\User\Desktop\desarrollo-sgo\BackEnd\artifacts\verify\Ecommerce.Infrastructure.pdb
