@@ -8,6 +8,11 @@ public class AuthResponseA
     public string? CompaniaId { get; set; }
     public string? RazonSocial { get; set; }
     public string? FechaVencimientoClave { get; set; }
+    public string? DescuentoMax { get; set; }
+    public string? CompaniaRuc { get; set; }
+    public string? CompaniaNomUbg { get; set; }
+    public string? CompaniaComercial { get; set; }
+    public string? CompaniaDirecSunat { get; set; }
     //public string? RUC { get; set; }
     //public string? UsuarioSerie { get; set; }
     //public string? Avatar { get; set; }
