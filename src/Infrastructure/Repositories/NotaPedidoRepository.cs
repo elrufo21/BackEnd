@@ -32,6 +32,65 @@ public class NotaPedidoRepository : INotaPedido
         return string.IsNullOrWhiteSpace(result) ? "error" : result;
     }
 
+    public async Task<string> ListarDocumentosAsync(string data, CancellationToken cancellationToken = default)
+    {
+        return await _accesoDatos.EjecutarComandoAsync("uspListaDocumentos", "@Data", data, cancellationToken);
+    }
+
+    public async Task<CredencialesSunat?> ObtenerCredencialesSunatAsync(int companiaId, CancellationToken cancellationToken = default)
+    {
+        await using var con = new SqlConnection(_connectionString);
+        await using var cmd = new SqlCommand("uspObtenerCredencialesSunat", con)
+        {
+            CommandTimeout = 300,
+            CommandType = CommandType.StoredProcedure
+        };
+        cmd.Parameters.AddWithValue("@CompaniaId", companiaId);
+
+        await con.OpenAsync(cancellationToken);
+        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken))
+        {
+            return null;
+        }
+
+        return new CredencialesSunat
+        {
+            UsuarioSOL = reader["UsuarioSOL"] == DBNull.Value ? null : reader["UsuarioSOL"].ToString(),
+            ClaveSOL = reader["ClaveSOL"] == DBNull.Value ? null : reader["ClaveSOL"].ToString(),
+            CertificadoPFX = reader["CertificadoPFX"] == DBNull.Value ? null : reader["CertificadoPFX"].ToString(),
+            ClaveCertificado = reader["ClaveCertificado"] == DBNull.Value ? null : reader["ClaveCertificado"].ToString(),
+            Entorno = reader["Entorno"] == DBNull.Value ? null : reader["Entorno"].ToString()
+        };
+    }
+
+    public async Task<bool> GuardarCredencialesSunatAsync(
+        int companiaId,
+        string usuarioSol,
+        string claveSol,
+        string certificadoBase64,
+        string claveCertificado,
+        int entorno,
+        CancellationToken cancellationToken = default)
+    {
+        await using var con = new SqlConnection(_connectionString);
+        await using var cmd = new SqlCommand("uspGuardarCredencialesSunat", con)
+        {
+            CommandTimeout = 300,
+            CommandType = CommandType.StoredProcedure
+        };
+        cmd.Parameters.AddWithValue("@CompaniaId", companiaId);
+        cmd.Parameters.AddWithValue("@UsuarioSOL", (object?)usuarioSol ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@ClaveSOL", (object?)claveSol ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@CertificadoBase64", (object?)certificadoBase64 ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@ClaveCertificado", (object?)claveCertificado ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@Entorno", entorno);
+
+        await con.OpenAsync(cancellationToken);
+        await cmd.ExecuteNonQueryAsync(cancellationToken);
+        return true;
+    }
+
     public async Task<string> InsertarAsync(NotaPedido notaPedido, CancellationToken cancellationToken = default)
     {
         await using var con = new SqlConnection(_connectionString);

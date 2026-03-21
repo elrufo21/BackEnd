@@ -50,21 +50,31 @@ public class UsuarioRepository : IUsuario
         var expiresInSeconds = (int)_jwtSettings.ExpireTime.TotalSeconds;
         return new AuthResponseA
         {
-            Id = payload[0],
-            PersonalId = payload[1],
-            Area = payload[2],
-            Usuario = payload[3],
-            CompaniaId = payload[4],
-            RazonSocial = payload[5],
-            FechaVencimientoClave = payload.Length > 6 ? payload[6] : null,
-            DescuentoMax = payload.Length > 7 ? payload[7] : "0",
-            CompaniaRuc = payload.Length > 8 ? payload[8] : string.Empty,
-            CompaniaNomUbg = payload.Length > 9 ? payload[9] : string.Empty,
-            CompaniaComercial = payload.Length > 10 ? payload[10] : string.Empty,
-            CompaniaDirecSunat = payload.Length > 11 ? payload[11] : string.Empty,
+            Id = GetPayloadValue(payload, 0),
+            PersonalId = GetPayloadValue(payload, 1),
+            Area = GetPayloadValue(payload, 2),
+            Usuario = GetPayloadValue(payload, 3),
+            CompaniaId = GetPayloadValue(payload, 4),
+            RazonSocial = GetPayloadValue(payload, 5),
+            FechaVencimientoClave = GetPayloadValue(payload, 6, null),
+            DescuentoMax = GetPayloadValue(payload, 7, "0"),
+            CompaniaRuc = GetPayloadValue(payload, 8),
+            CompaniaNomUbg = GetPayloadValue(payload, 9),
+            CompaniaComercial = GetPayloadValue(payload, 10),
+            CompaniaDirecSunat = GetPayloadValue(payload, 11),
+            UsuarioSol = GetPayloadValue(payload, 12),
+            ClaveSol = GetPayloadValue(payload, 13),
+            CertificadoBase64 = GetPayloadValue(payload, 14),
+            ClaveCertificado = GetPayloadValue(payload, 15),
+            Entorno = GetPayloadValue(payload, 16, "3"),
             Token = _authService.CreateTokenA(expiresAtUtc.ToString("O")),
             ExpiresAtUtc = expiresAtUtc,
             ExpiresInSeconds = expiresInSeconds
         };
+    }
+
+    private static string? GetPayloadValue(string[] payload, int index, string? fallback = "")
+    {
+        return payload.Length > index ? payload[index] : fallback;
     }
 }

@@ -13,6 +13,11 @@ public class AuthResponseA
     public string? CompaniaNomUbg { get; set; }
     public string? CompaniaComercial { get; set; }
     public string? CompaniaDirecSunat { get; set; }
+    public string? UsuarioSol { get; set; }
+    public string? ClaveSol { get; set; }
+    public string? CertificadoBase64 { get; set; }
+    public string? ClaveCertificado { get; set; }
+    public string? Entorno { get; set; }
     //public string? RUC { get; set; }
     //public string? UsuarioSerie { get; set; }
     //public string? Avatar { get; set; }

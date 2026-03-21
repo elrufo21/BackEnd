@@ -6,6 +6,16 @@ public interface INotaPedido
 {
     Task<string> RegistrarOrdenAsync(string data, CancellationToken cancellationToken = default);
     Task<string> EditarOrdenAsync(string data, CancellationToken cancellationToken = default);
+    Task<string> ListarDocumentosAsync(string data, CancellationToken cancellationToken = default);
+    Task<CredencialesSunat?> ObtenerCredencialesSunatAsync(int companiaId, CancellationToken cancellationToken = default);
+    Task<bool> GuardarCredencialesSunatAsync(
+        int companiaId,
+        string usuarioSol,
+        string claveSol,
+        string certificadoBase64,
+        string claveCertificado,
+        int entorno,
+        CancellationToken cancellationToken = default);
     Task<string> InsertarAsync(NotaPedidoEntity notaPedido, CancellationToken cancellationToken = default);
     Task<string> InsertarConDetalleAsync(NotaPedidoEntity notaPedido, IEnumerable<DetalleNota> detalles, CancellationToken cancellationToken = default);
     Task<bool> EliminarAsync(long id, CancellationToken cancellationToken = default);

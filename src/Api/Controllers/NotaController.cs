@@ -15,6 +15,13 @@ namespace Ecommerce.Api.Controllers;
 [Route("api/v1/[controller]")]
 public class NotaController : ControllerBase
 {
+    private const long MaxCertificateSizeBytes = 2 * 1024 * 1024; // 2 MB
+    private static readonly HashSet<string> AllowedCertificateExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".p12",
+        ".pfx"
+    };
+
     private readonly INotaPedido _mediator;
     public NotaController(INotaPedido mediador)
     {
@@ -83,6 +90,115 @@ public class NotaController : ControllerBase
         }
 
         return Ok(new { resultado });
+    }
+
+    [AllowAnonymous]
+    [HttpPost("lista-documentos", Name = "GetListaDocumentos")]
+    [ProducesResponseType(typeof(string), (int)HttpStatusCode.OK)]
+    public async Task<IActionResult> ListarDocumentos([FromBody] ListaDocumentosRequest request, CancellationToken cancellationToken)
+    {
+        if (request is null || string.IsNullOrWhiteSpace(request.Data))
+        {
+            return BadRequest("Data es requerido.");
+        }
+
+        var resultado = await _mediator.ListarDocumentosAsync(request.Data, cancellationToken);
+        return Content(resultado, "text/plain");
+    }
+
+    [AllowAnonymous]
+    [HttpGet("credenciales-sunat/{companiaId:int}", Name = "GetCredencialesSunat")]
+    [ProducesResponseType(typeof(CredencialesSunat), (int)HttpStatusCode.OK)]
+    public async Task<IActionResult> ObtenerCredencialesSunat(int companiaId, CancellationToken cancellationToken)
+    {
+        if (companiaId <= 0)
+        {
+            return BadRequest("CompaniaId debe ser mayor a 0.");
+        }
+
+        var resultado = await _mediator.ObtenerCredencialesSunatAsync(companiaId, cancellationToken);
+        if (resultado is null)
+        {
+            return NotFound();
+        }
+
+        return Ok(resultado);
+    }
+
+    [Authorize]
+    [RequestSizeLimit(MaxCertificateSizeBytes)]
+    [RequestFormLimits(MultipartBodyLengthLimit = MaxCertificateSizeBytes)]
+    [HttpPost("credenciales-sunat", Name = "GuardarCredencialesSunat")]
+    [ProducesResponseType((int)HttpStatusCode.OK)]
+    public async Task<IActionResult> GuardarCredencialesSunat([FromForm] GuardarCredencialesSunatRequest request, CancellationToken cancellationToken)
+    {
+        if (request is null)
+        {
+            return BadRequest("Request requerido.");
+        }
+
+        if (request.CompaniaId <= 0)
+        {
+            return BadRequest("CompaniaId debe ser mayor a 0.");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.UsuarioSOL))
+        {
+            return BadRequest("UsuarioSOL es requerido.");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.ClaveSOL))
+        {
+            return BadRequest("ClaveSOL es requerido.");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.ClaveCertificado))
+        {
+            return BadRequest("ClaveCertificado es requerido.");
+        }
+
+        if (request.Entorno <= 0)
+        {
+            return BadRequest("Entorno debe ser mayor a 0.");
+        }
+
+        if (request.Certificado is null || request.Certificado.Length == 0)
+        {
+            return BadRequest("Debe enviar el archivo del certificado.");
+        }
+
+        if (request.Certificado.Length > MaxCertificateSizeBytes)
+        {
+            return BadRequest($"El certificado excede el límite de {MaxCertificateSizeBytes / (1024 * 1024)} MB.");
+        }
+
+        var extension = Path.GetExtension(request.Certificado.FileName);
+        if (!AllowedCertificateExtensions.Contains(extension))
+        {
+            return BadRequest("Solo se permiten archivos .p12 o .pfx.");
+        }
+
+        await using var stream = request.Certificado.OpenReadStream();
+        await using var memory = new MemoryStream();
+        await stream.CopyToAsync(memory, cancellationToken);
+        var certificadoBytes = memory.ToArray();
+        if (certificadoBytes.Length == 0)
+        {
+            return BadRequest("El certificado no contiene datos.");
+        }
+
+        var certificadoBase64 = Convert.ToBase64String(certificadoBytes);
+
+        var ok = await _mediator.GuardarCredencialesSunatAsync(
+            request.CompaniaId,
+            request.UsuarioSOL.Trim(),
+            request.ClaveSOL.Trim(),
+            certificadoBase64,
+            request.ClaveCertificado.Trim(),
+            request.Entorno,
+            cancellationToken);
+
+        return Ok(new { ok });
     }
 
     [AllowAnonymous]
@@ -626,4 +742,19 @@ public class NotaPedidoConDetalleRequest
 {
     public NotaPedido? Nota { get; set; }
     public List<DetalleNota>? Detalles { get; set; }
+}
+
+public class ListaDocumentosRequest
+{
+    public string Data { get; set; } = string.Empty;
+}
+
+public class GuardarCredencialesSunatRequest
+{
+    public int CompaniaId { get; set; }
+    public string UsuarioSOL { get; set; } = string.Empty;
+    public string ClaveSOL { get; set; } = string.Empty;
+    public IFormFile? Certificado { get; set; }
+    public string ClaveCertificado { get; set; } = string.Empty;
+    public int Entorno { get; set; }
 }
