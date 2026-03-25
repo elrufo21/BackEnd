@@ -17,5 +17,9 @@ public class Producto
     public string? ProductoImagen { get; set; }
     public decimal? ValorCritico { get; set; }
     public string? AplicaINV { get; set; }
+    public string? DetalleUm { get; set; }
+    public string? DetalleUM { get; set; }
+    public string? UnidadMedidaDetalle { get; set; }
+    public string? Data { get; set; }
 
 }

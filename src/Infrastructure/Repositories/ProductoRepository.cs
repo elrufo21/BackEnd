@@ -1,4 +1,5 @@
 using System.Data;
+using System.Globalization;
 using Ecommerce.Application.Contracts.Productos;
 using Ecommerce.Domain;
 using Ecommerce.Infrastructure.Persistence;
@@ -21,7 +22,46 @@ public class ProductoRepository : IProducto
 
     public async Task<string> InsertarAsync(Producto producto, CancellationToken cancellationToken = default)
     {
-        var data = $"{producto.IdProducto}|{producto.IdSubLinea}|{producto.ProductoCodigo?.Trim()}|{producto.ProductoNombre?.Trim()}|{producto.ProductoUM?.Trim()}|{Convert.ToDecimal(producto.ProductoCosto)}|{Convert.ToDecimal(producto.ProductoVenta)}|{Convert.ToDecimal(producto.ProductoVentaB)}|{Convert.ToDecimal(producto.ProductoCantidad)}|{producto.ProductoEstado}|{producto.ProductoUsuario}|{producto.ProductoImagen}|{Convert.ToDecimal(producto.ValorCritico)}|{producto.AplicaINV}";
+        var rawData = (producto.Data ?? string.Empty).Trim();
+        if (!string.IsNullOrWhiteSpace(rawData) && rawData.Contains('|'))
+        {
+            var resultRaw = await _accesoDatos.EjecutarComandoAsync("uspIngresarProducto", "@Data", rawData, cancellationToken);
+            return string.IsNullOrWhiteSpace(resultRaw) ? "error" : resultRaw;
+        }
+
+        var aplicaInv = (producto.AplicaINV ?? string.Empty).Trim();
+        var detalleUm = ResolveDetalleUm(producto);
+
+        if (TryExtractDetalleDesdeAplicaInv(aplicaInv, out var aplicaInvLimpio, out var detalleDesdeAplicaInv))
+        {
+            aplicaInv = aplicaInvLimpio;
+            if (string.IsNullOrWhiteSpace(detalleUm))
+            {
+                detalleUm = detalleDesdeAplicaInv;
+            }
+        }
+
+        var data = string.Join("|",
+            producto.IdProducto.ToString(CultureInfo.InvariantCulture),
+            producto.IdSubLinea?.ToString(CultureInfo.InvariantCulture) ?? string.Empty,
+            producto.ProductoCodigo?.Trim() ?? string.Empty,
+            producto.ProductoNombre?.Trim() ?? string.Empty,
+            producto.ProductoUM?.Trim() ?? string.Empty,
+            FormatDecimal(producto.ProductoCosto),
+            FormatDecimal(producto.ProductoVenta),
+            FormatDecimal(producto.ProductoVentaB),
+            FormatDecimal(producto.ProductoCantidad),
+            producto.ProductoEstado ?? string.Empty,
+            producto.ProductoUsuario ?? string.Empty,
+            producto.ProductoImagen ?? string.Empty,
+            FormatDecimal(producto.ValorCritico),
+            aplicaInv);
+
+        if (!string.IsNullOrWhiteSpace(detalleUm))
+        {
+            data = $"{data}[{detalleUm}]";
+        }
+
         var result = await _accesoDatos.EjecutarComandoAsync("uspIngresarProducto", "@Data", data, cancellationToken);
         return string.IsNullOrWhiteSpace(result) ? "error" : result;
     }
@@ -193,5 +233,60 @@ public class ProductoRepository : IProducto
         var normalizedPage = page < 1 ? 1 : page;
         var normalizedPageSize = pageSize < 1 ? 1 : Math.Min(pageSize, 100);
         return (normalizedPage, normalizedPageSize);
+    }
+
+    private static string FormatDecimal(decimal? value)
+    {
+        return (value ?? 0m).ToString(CultureInfo.InvariantCulture);
+    }
+
+    private static string? NormalizeDetalleUm(string? detalleUm)
+    {
+        if (string.IsNullOrWhiteSpace(detalleUm))
+        {
+            return null;
+        }
+
+        var normalized = detalleUm.Trim();
+        if (normalized.StartsWith('[') && normalized.EndsWith(']') && normalized.Length > 1)
+        {
+            normalized = normalized[1..^1].Trim();
+        }
+
+        return string.IsNullOrWhiteSpace(normalized) ? null : normalized;
+    }
+
+    private static string? ResolveDetalleUm(Producto producto)
+    {
+        return NormalizeDetalleUm(producto.DetalleUm)
+            ?? NormalizeDetalleUm(producto.DetalleUM)
+            ?? NormalizeDetalleUm(producto.UnidadMedidaDetalle);
+    }
+
+    private static bool TryExtractDetalleDesdeAplicaInv(string aplicaInv, out string aplicaInvLimpio, out string? detalleUm)
+    {
+        aplicaInvLimpio = aplicaInv;
+        detalleUm = null;
+
+        if (string.IsNullOrWhiteSpace(aplicaInv))
+        {
+            return false;
+        }
+
+        var openIndex = aplicaInv.IndexOf('[');
+        if (openIndex <= 0)
+        {
+            return false;
+        }
+
+        aplicaInvLimpio = aplicaInv[..openIndex].Trim();
+
+        var closeIndex = aplicaInv.LastIndexOf(']');
+        var rawDetalle = closeIndex > openIndex
+            ? aplicaInv.Substring(openIndex + 1, closeIndex - openIndex - 1)
+            : aplicaInv[(openIndex + 1)..];
+
+        detalleUm = string.IsNullOrWhiteSpace(rawDetalle) ? null : rawDetalle.Trim();
+        return true;
     }
 }

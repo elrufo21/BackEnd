@@ -5561,11 +5561,11 @@
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "C:\\Users\\User\\Desktop\\desarrollo-sgo\\BackEnd\\src\\api\\Ecommerce.Api.csproj",
+      "projectUniqueName": "C:\\Users\\User\\Desktop\\desarrollo-sgo\\BackEnd\\src\\Api\\Ecommerce.Api.csproj",
       "projectName": "Ecommerce.Api",
-      "projectPath": "C:\\Users\\User\\Desktop\\desarrollo-sgo\\BackEnd\\src\\api\\Ecommerce.Api.csproj",
+      "projectPath": "C:\\Users\\User\\Desktop\\desarrollo-sgo\\BackEnd\\src\\Api\\Ecommerce.Api.csproj",
       "packagesPath": "C:\\Users\\User\\.nuget\\packages\\",
-      "outputPath": "C:\\Users\\User\\Desktop\\desarrollo-sgo\\BackEnd\\src\\api\\obj\\",
+      "outputPath": "C:\\Users\\User\\Desktop\\desarrollo-sgo\\BackEnd\\src\\Api\\obj\\",
       "projectStyle": "PackageReference",
       "fallbackFolders": [
         "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
