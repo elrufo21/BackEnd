@@ -37,7 +37,6 @@ public class CompaniaRepository : ICompania
                                 TokenApi,
                                 ClienIdToken,
                                 DescuentoMax,
-                                DiasMaxDep,
                                 RenovacionOSE,
                                 RenovacionFirma,
                                 RenovacionSome,
@@ -64,7 +63,6 @@ public class CompaniaRepository : ICompania
                                 @TokenApi,
                                 @ClienIdToken,
                                 @DescuentoMax,
-                                @DiasMaxDep,
                                 @RenovacionOSE,
                                 @RenovacionFirma,
                                 @RenovacionSome,
@@ -102,7 +100,6 @@ public class CompaniaRepository : ICompania
                                 TokenApi = @TokenApi,
                                 ClienIdToken = @ClienIdToken,
                                 DescuentoMax = @DescuentoMax,
-                                DiasMaxDep = @DiasMaxDep,
                                 RenovacionOSE = @RenovacionOSE,
                                 RenovacionFirma = @RenovacionFirma,
                                 RenovacionSome = @RenovacionSome,
@@ -154,7 +151,6 @@ public class CompaniaRepository : ICompania
                                     TokenApi,
                                     ClienIdToken,
                                     DescuentoMax,
-                                    DiasMaxDep,
                                     RenovacionOSE,
                                     RenovacionFirma,
                                     RenovacionSome,
@@ -197,7 +193,6 @@ public class CompaniaRepository : ICompania
                 TokenApi = reader["TokenApi"].ToString(),
                 ClienIdToken = reader["ClienIdToken"].ToString(),
                 DescuentoMax = reader["DescuentoMax"] == DBNull.Value ? null : Convert.ToDecimal(reader["DescuentoMax"]),
-                DiasMaxDep = reader["DiasMaxDep"] == DBNull.Value ? null : Convert.ToInt32(reader["DiasMaxDep"]),
                 RenovacionOSE = reader["RenovacionOSE"] == DBNull.Value ? null : Convert.ToDateTime(reader["RenovacionOSE"]),
                 RenovacionFirma = reader["RenovacionFirma"] == DBNull.Value ? null : Convert.ToDateTime(reader["RenovacionFirma"]),
                 RenovacionSome = reader["RenovacionSome"] == DBNull.Value ? null : Convert.ToDateTime(reader["RenovacionSome"]),
@@ -271,7 +266,6 @@ public class CompaniaRepository : ICompania
         descuentoParam.Scale = 2;
         descuentoParam.Value = (object?)compania.DescuentoMax ?? DBNull.Value;
 
-        cmd.Parameters.AddWithValue("@DiasMaxDep", (object?)compania.DiasMaxDep ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@RenovacionOSE", (object?)compania.RenovacionOSE ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@RenovacionFirma", (object?)compania.RenovacionFirma ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@RenovacionSome", (object?)compania.RenovacionSome ?? DBNull.Value);

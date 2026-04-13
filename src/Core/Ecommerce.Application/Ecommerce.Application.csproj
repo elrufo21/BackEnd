@@ -40,7 +40,7 @@
     <TargetFramework>net7.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <DefaultItemExcludes>$(DefaultItemExcludes);**\bin\**;**\obj\**</DefaultItemExcludes>
+    <DefaultItemExcludes>$(DefaultItemExcludes);**\bin\**;**\obj\**;**\artifacts\**</DefaultItemExcludes>
   </PropertyGroup>
 
 </Project>

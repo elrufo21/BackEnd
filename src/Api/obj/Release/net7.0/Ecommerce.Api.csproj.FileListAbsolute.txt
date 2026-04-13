@@ -98,3 +98,4 @@ C:\Users\User\Desktop\desarrollo-sgo\BackEnd\src\Api\obj\Release\net7.0\refint\E
 C:\Users\User\Desktop\desarrollo-sgo\BackEnd\src\Api\obj\Release\net7.0\Ecommerce.Api.pdb
 C:\Users\User\Desktop\desarrollo-sgo\BackEnd\src\Api\obj\Release\net7.0\Ecommerce.Api.genruntimeconfig.cache
 C:\Users\User\Desktop\desarrollo-sgo\BackEnd\src\Api\obj\Release\net7.0\ref\Ecommerce.Api.dll
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\src\Api\bin\Release\net7.0\ICSharpCode.SharpZipLib.dll

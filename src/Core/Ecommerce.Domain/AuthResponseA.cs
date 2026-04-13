@@ -18,6 +18,7 @@ public class AuthResponseA
     public string? CertificadoBase64 { get; set; }
     public string? ClaveCertificado { get; set; }
     public string? Entorno { get; set; }
+    public string? CompaniaTelefono { get; set; }
     //public string? RUC { get; set; }
     //public string? UsuarioSerie { get; set; }
     //public string? Avatar { get; set; }

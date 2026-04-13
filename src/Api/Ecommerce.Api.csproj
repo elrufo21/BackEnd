@@ -4,10 +4,11 @@
     <TargetFramework>net7.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <DefaultItemExcludes>$(DefaultItemExcludes);**\bin\**;**\obj\**</DefaultItemExcludes>
+    <DefaultItemExcludes>$(DefaultItemExcludes);**\bin\**;**\obj\**;**\artifacts\**</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="SharpZipLib" Version="1.4.2" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="7.0.1" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="7.0.0">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
@@ -19,6 +20,10 @@
   <ItemGroup>
     <ProjectReference Include="..\Core\Ecommerce.Application\Ecommerce.Application.csproj" />
     <ProjectReference Include="..\Infrastructure\Ecommerce.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\..\CLASES_EF\*.cs" Link="Legacy\CLASES_EF\%(Filename)%(Extension)" />
   </ItemGroup>
 
 </Project>

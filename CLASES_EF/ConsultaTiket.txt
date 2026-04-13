@@ -1,0 +1,155 @@
+public void ConsultaTike()
+        {
+            if (gvResumen.Rows.Count >= 1)
+            {
+                string vticket = string.Empty;
+                string xidRe, vestado = string.Empty;
+                xidRe = Convert.ToString(gvResumen.CurrentRow.Cells[1].Value);
+                vticket = Convert.ToString(gvResumen.CurrentRow.Cells[11].Value);
+                vestado = Convert.ToString(gvResumen.CurrentRow.Cells[19].Value);
+
+
+ Regex Val = new Regex("^[0-9]+$"); si o si numero o vacio 
+                if (!Val.IsMatch(vticket) && (Convert.ToString(gvResumen.CurrentRow.Cells[14].Value) == "" || Convert.ToString(gvResumen.CurrentRow.Cells[14].Value) == null))
+                {
+                    if (vestado.Equals("B"))
+                    {
+                        MessageBox.Show("NO SE GENERO EL TICKET DE SUNAT,SE RETORNARAN LAS BOLETAS...FAVOR DE ENVIARLO DENUEVO EN UNOS MINUTOS", "AVISO", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        cmdEstados.Text = "PENDIENTES";
+                        btnEnviar.Enabled = true;
+                        linkbaja.Visible = false;
+                        listar();
+                    }
+                    else
+                    {
+                        AccesoDatos daSQLB = new AccesoDatos("con");
+                        string rptB = daSQLB.ejecutarComando("uspRetornaBoletaPorTicket", "@ResumenId", xidRe);
+                        if (string.IsNullOrEmpty(rptB))
+                        {
+                            men.ErrorGuardado();
+                        }
+                        else
+                        {
+                            MessageBox.Show("NO SE GENERO EL TICKET DE SUNAT,SE RETORNARAN LAS BOLETAS...FAVOR DE ENVIARLO DENUEVO EN UNOS MINUTOS", "AVISO", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                            cmdEstados.Text = "PENDIENTES";
+                            btnEnviar.Enabled = true;
+                            linkbaja.Visible = false;
+                            gvResumen.CurrentRow.Cells[14].Value = "NO SE GENERO EL TICKET DE RESPUESTA DE SUNAT";
+                            listar();
+                        }
+                    }
+                }
+                else
+                {
+este es la columna codigo de sunat en ves de cero te dice esta respuesta
+                    if (Convert.ToString(gvResumen.CurrentRow.Cells[12].Value).Contains("env:Server") || Convert.ToString(gvResumen.CurrentRow.Cells[12].Value).Contains("env:Client") || Convert.ToString(gvResumen.CurrentRow.Cells[12].Value).Contains("0109"))
+                    {
+                        gvResumen.CurrentRow.Cells[12].Value = "";
+                        gvResumen.CurrentRow.Cells[14].Value = "";
+                    }
+                    if (Convert.ToString(gvResumen.CurrentRow.Cells[12].Value) == "" || Convert.ToString(gvResumen.CurrentRow.Cells[12].Value) == null)
+                    {
+                        string vruc, vuser, vclave, vsecuencia = string.Empty;
+                        string xvalue = string.Empty;
+                        vsecuencia = Convert.ToString(gvResumen.CurrentRow.Cells[5].Value);// 1 o 2
+                        vruc = Convert.ToString(gvResumen.CurrentRow.Cells[16].Value);
+                        vuser = Convert.ToString(gvResumen.CurrentRow.Cells[17].Value);
+                        vclave = Convert.ToString(gvResumen.CurrentRow.Cells[18].Value);
+                        objCPETICKET.TIPO_PROCESO = NROPROCESO;
+                        objCPETICKET.NRO_DOCUMENTO_EMPRESA = vruc;//Ruc de la Empresa
+                        objCPETICKET.USUARIO_SOL_EMPRESA = vuser;
+                        objCPETICKET.PASS_SOL_EMPRESA = vclave;
+                        objCPETICKET.TICKET = vticket;
+                        objCPETICKET.TIPO_DOCUMENTO = "RC";//Resumen de boletas
+                        objCPETICKET.NRO_DOCUMENTO = vsecuencia;
+                        Dictionary<string, string> dictionaryEnv = new Dictionary<string, string>();
+                        dictionaryEnv = objF.ConsultaTicket(objCPETICKET);
+                        TXTCOD_SUNAT.Text = dictionaryEnv["cod_sunat"];
+                        TXT_MSJ_SUNAT.Text = dictionaryEnv["msj_sunat"];
+                        TXTHASHCPE.Text = dictionaryEnv["hash_cpe"];
+                        TXTHASHCDR.Text = dictionaryEnv["hash_cdr"];
+                        xvalue = xidRe + "|" + TXTCOD_SUNAT.Text + "|" + TXT_MSJ_SUNAT.Text + "|" + TXTHASHCDR.Text;
+                        AccesoDatos daSQL = new AccesoDatos("con");
+                        string rpt = daSQL.ejecutarComando("uspEditarRB", "@Data", xvalue);
+                        if (string.IsNullOrEmpty(rpt))
+                        {
+                            men.ErrorGuardado();
+                        }
+                        else
+                        {
+                            if (TXTCOD_SUNAT.Text == "0133" || TXTCOD_SUNAT.Text == "0111" ||
+                                 TXTCOD_SUNAT.Text == "133" || TXTCOD_SUNAT.Text == "111" ||
+                                 TXTCOD_SUNAT.Text == "109" || TXTCOD_SUNAT.Text == "135" ||
+                                 TXTCOD_SUNAT.Text == "0109" || TXTCOD_SUNAT.Text == "2220" ||
+                                 TXTCOD_SUNAT.Text == "2018" || TXTCOD_SUNAT.Text == "100" ||
+                                 TXTCOD_SUNAT.Text == "2223" || TXTCOD_SUNAT.Text == "0135" ||
+                                 TXTCOD_SUNAT.Text == "200" || TXTCOD_SUNAT.Text == "2663")
+                            {
+
+                                    AccesoDatos daSQLB = new AccesoDatos("con");
+                                    string rptB = daSQLB.ejecutarComando("uspRetornarBoletas", "@ResumenId", xidRe);
+                                    if (rptB == "")
+                                    {
+                                        men.ErrorGuardado();
+                                    }
+                                    else
+                                    {
+                                        MessageBox.Show(TXT_MSJ_SUNAT.Text, "AVISO", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                                        cmdEstados.Text = "PENDIENTES";
+                                        btnEnviar.Enabled = true;
+                                        linkbaja.Visible = false;
+                                        listar();
+                                    }
+
+                            }
+                            else
+                            {
+                                if(TXTCOD_SUNAT.Text.Contains("env:Server") || TXTCOD_SUNAT.Text.Contains("env:Client"))
+                                {
+                                    xCanConsultas = Convert.ToString(gvResumen.CurrentRow.Cells[20].Value);
+                                    if (xCanConsultas.Equals("") || xCanConsultas == null) xCanConsultas = "1";
+                                    else xCanConsultas = (int.Parse(xCanConsultas) + 1).ToString();
+                                    if (int.Parse(xCanConsultas) <= 2)
+                                    {
+                                        MessageBox.Show("Intente Nueva mente " + xCanConsultas + " de 3", "ENVIAR", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                                    }
+                                    else
+                                    {
+                                        //abrirConsulta();
+                                    }
+                                }
+                                else if (TXTCOD_SUNAT.Text == "")
+                                {
+                                    xCanConsultas = Convert.ToString(gvResumen.CurrentRow.Cells[20].Value);
+                                    if (xCanConsultas.Equals("") || xCanConsultas == null) xCanConsultas = "1";
+                                    else xCanConsultas = (int.Parse(xCanConsultas) + 1).ToString();
+                                    if (int.Parse(xCanConsultas) <= 2)
+                                    {
+                                        MessageBox.Show("Intente Nueva mente " + xCanConsultas + " de 3", "ENVIAR", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                                    }
+                                    else
+                                    {
+                                        //abrirConsulta();
+                                    }
+                                }
+                                else
+                                {
+                                    MessageBox.Show("Se consulto Correctamente", "ENVIAR", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                                }
+                            }
+                            int pos = bsB.Position;
+                            listaRangoFecha();
+                            bsB.Position = pos;
+                            limpiaResSunat();
+                            totalB();
+                            buscarB();
+                        }
+                    }
+                    else
+                    {
+                        MessageBox.Show("El numero de ticket que selecciono ya fue consultado correctamente", "AVISO", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        gvResumen.Focus();
+                    }
+                }
+            }
+        }

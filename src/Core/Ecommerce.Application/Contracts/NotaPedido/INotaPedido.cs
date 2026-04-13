@@ -6,7 +6,20 @@ public interface INotaPedido
 {
     Task<string> RegistrarOrdenAsync(string data, CancellationToken cancellationToken = default);
     Task<string> EditarOrdenAsync(string data, CancellationToken cancellationToken = default);
+    Task<string> AnularDocumentoAsync(string listaOrden, CancellationToken cancellationToken = default);
     Task<string> ListarDocumentosAsync(string data, CancellationToken cancellationToken = default);
+    Task<string> ListarBajasAsync(string data, CancellationToken cancellationToken = default);
+    Task<string> RegistrarResumenBoletasAsync(string listaOrden, CancellationToken cancellationToken = default);
+    Task<string> EditarResumenBoletasAsync(string data, CancellationToken cancellationToken = default);
+    Task<string> ReenviarFacturaAsync(string data, CancellationToken cancellationToken = default);
+    Task<string> RegistrarNotaCreditoAsync(string listaOrden, CancellationToken cancellationToken = default);
+    Task<string> ReenviarNotaCreditoAsync(string data, CancellationToken cancellationToken = default);
+    Task<string> RetornaBoletaPorTicketAsync(string resumenId, CancellationToken cancellationToken = default);
+    Task<string> RetornarBoletasAsync(string resumenId, CancellationToken cancellationToken = default);
+    Task<string?> ObtenerCdrBase64ResumenAsync(long resumenId, CancellationToken cancellationToken = default);
+    Task<string?> ObtenerUsuarioDocumentoVentaAsync(IEnumerable<long> docuIds, CancellationToken cancellationToken = default);
+    Task<string> TraerSecuenciaResumenAsync(string companiaId, CancellationToken cancellationToken = default);
+    Task<string> ResumenPorFechaAsync(DateTime fechaInicio, DateTime fechaFin, CancellationToken cancellationToken = default);
     Task<CredencialesSunat?> ObtenerCredencialesSunatAsync(int companiaId, CancellationToken cancellationToken = default);
     Task<bool> GuardarCredencialesSunatAsync(
         int companiaId,

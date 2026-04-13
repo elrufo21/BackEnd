@@ -23,4 +23,7 @@ public interface IProducto
         int page = 1,
         int pageSize = 50,
         CancellationToken cancellationToken = default);
+    Task<long> GuardarUnidadMedidaProductoAsync(
+        GuardarUnidadMedidaProductoRequest request,
+        CancellationToken cancellationToken = default);
 }

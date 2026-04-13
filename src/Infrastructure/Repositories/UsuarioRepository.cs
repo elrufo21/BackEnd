@@ -67,6 +67,7 @@ public class UsuarioRepository : IUsuario
             CertificadoBase64 = GetPayloadValue(payload, 14),
             ClaveCertificado = GetPayloadValue(payload, 15),
             Entorno = GetPayloadValue(payload, 16, "3"),
+            CompaniaTelefono = GetPayloadValue(payload, 17),
             Token = _authService.CreateTokenA(expiresAtUtc.ToString("O")),
             ExpiresAtUtc = expiresAtUtc,
             ExpiresInSeconds = expiresInSeconds

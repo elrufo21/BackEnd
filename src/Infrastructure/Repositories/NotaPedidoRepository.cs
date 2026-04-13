@@ -32,9 +32,166 @@ public class NotaPedidoRepository : INotaPedido
         return string.IsNullOrWhiteSpace(result) ? "error" : result;
     }
 
+    public async Task<string> AnularDocumentoAsync(string listaOrden, CancellationToken cancellationToken = default)
+    {
+        var attempts = new (string Sp, string Param)[]
+        {
+            ("anularOrden", "@ListaOrden"),
+            ("anularOrden", "@Data"),
+            ("anularDocumento", "@ListaOrden"),
+            ("anularDocumento", "@Data")
+        };
+
+        SqlException? lastFallbackException = null;
+
+        foreach (var attempt in attempts)
+        {
+            try
+            {
+                var result = await _accesoDatos.EjecutarComandoAsync(
+                    attempt.Sp,
+                    attempt.Param,
+                    listaOrden,
+                    cancellationToken);
+
+                return string.IsNullOrWhiteSpace(result) ? "error" : result;
+            }
+            catch (SqlException ex) when (IsMissingProcedureOrParameter(ex))
+            {
+                lastFallbackException = ex;
+            }
+        }
+
+        if (lastFallbackException is not null)
+        {
+            throw lastFallbackException;
+        }
+
+        return "error";
+    }
+
+    private static bool IsMissingProcedureOrParameter(SqlException ex)
+    {
+        // 2812: stored procedure not found
+        // 201 : expects parameter not supplied
+        // 8144: too many arguments
+        return ex.Number == 2812 || ex.Number == 201 || ex.Number == 8144;
+    }
+
     public async Task<string> ListarDocumentosAsync(string data, CancellationToken cancellationToken = default)
     {
         return await _accesoDatos.EjecutarComandoAsync("uspListaDocumentos", "@Data", data, cancellationToken);
+    }
+
+    public async Task<string> ListarBajasAsync(string data, CancellationToken cancellationToken = default)
+    {
+        return await _accesoDatos.EjecutarComandoAsync("uspListaBajas", "@Data", data, cancellationToken);
+    }
+
+    public async Task<string> RegistrarResumenBoletasAsync(string listaOrden, CancellationToken cancellationToken = default)
+    {
+        var result = await _accesoDatos.EjecutarComandoAsync("uspinsertarRB", "@ListaOrden", listaOrden, cancellationToken);
+        return string.IsNullOrWhiteSpace(result) ? "~" : result;
+    }
+
+    public async Task<string> EditarResumenBoletasAsync(string data, CancellationToken cancellationToken = default)
+    {
+        var result = await _accesoDatos.EjecutarComandoAsync("uspEditarRB", "@Data", data, cancellationToken);
+        return string.IsNullOrWhiteSpace(result) ? string.Empty : result;
+    }
+
+    public async Task<string> ReenviarFacturaAsync(string data, CancellationToken cancellationToken = default)
+    {
+        var result = await _accesoDatos.EjecutarComandoAsync("uspReEnviarFactura", "@Data", data, cancellationToken);
+        return string.IsNullOrWhiteSpace(result) ? string.Empty : result;
+    }
+
+    public async Task<string> RegistrarNotaCreditoAsync(string listaOrden, CancellationToken cancellationToken = default)
+    {
+        var result = await _accesoDatos.EjecutarComandoAsync("uspinsertarNC", "@ListaOrden", listaOrden, cancellationToken);
+        return string.IsNullOrWhiteSpace(result) ? string.Empty : result;
+    }
+
+    public async Task<string> ReenviarNotaCreditoAsync(string data, CancellationToken cancellationToken = default)
+    {
+        var result = await _accesoDatos.EjecutarComandoAsync("uspReEnviarNotaCredito", "@Data", data, cancellationToken);
+        return string.IsNullOrWhiteSpace(result) ? string.Empty : result;
+    }
+
+    public async Task<string> RetornaBoletaPorTicketAsync(string resumenId, CancellationToken cancellationToken = default)
+    {
+        var result = await _accesoDatos.EjecutarComandoAsync("uspRetornaBoletaPorTicket", "@ResumenId", resumenId, cancellationToken);
+        return string.IsNullOrWhiteSpace(result) ? string.Empty : result;
+    }
+
+    public async Task<string> RetornarBoletasAsync(string resumenId, CancellationToken cancellationToken = default)
+    {
+        var result = await _accesoDatos.EjecutarComandoAsync("uspRetornarBoletas", "@ResumenId", resumenId, cancellationToken);
+        return string.IsNullOrWhiteSpace(result) ? string.Empty : result;
+    }
+
+    public async Task<string?> ObtenerCdrBase64ResumenAsync(long resumenId, CancellationToken cancellationToken = default)
+    {
+        if (resumenId <= 0)
+        {
+            return null;
+        }
+
+        const string sql = @"SELECT TOP 1 NULLIF(LTRIM(RTRIM(CDRBase64)), '')
+                             FROM ResumenBoletas
+                             WHERE ResumenId = @ResumenId;";
+
+        await using var con = new SqlConnection(_connectionString);
+        await using var cmd = new SqlCommand(sql, con);
+        cmd.Parameters.AddWithValue("@ResumenId", resumenId);
+
+        await con.OpenAsync(cancellationToken);
+        var value = await cmd.ExecuteScalarAsync(cancellationToken);
+        var cdr = value?.ToString();
+        return string.IsNullOrWhiteSpace(cdr) ? null : cdr.Trim();
+    }
+
+    public async Task<string?> ObtenerUsuarioDocumentoVentaAsync(IEnumerable<long> docuIds, CancellationToken cancellationToken = default)
+    {
+        var ids = docuIds?
+            .Where(x => x > 0)
+            .Distinct()
+            .ToList() ?? new List<long>();
+
+        if (ids.Count == 0)
+        {
+            return null;
+        }
+
+        var parameterNames = ids.Select((_, index) => $"@Id{index}").ToList();
+        var sql = $@"SELECT TOP 1 NULLIF(LTRIM(RTRIM(DocuUsuario)), '')
+                     FROM DocumentoVenta
+                     WHERE DocuId IN ({string.Join(",", parameterNames)})
+                     ORDER BY DocuId DESC;";
+
+        await using var con = new SqlConnection(_connectionString);
+        await using var cmd = new SqlCommand(sql, con);
+        for (var i = 0; i < ids.Count; i++)
+        {
+            cmd.Parameters.AddWithValue(parameterNames[i], ids[i]);
+        }
+
+        await con.OpenAsync(cancellationToken);
+        var value = await cmd.ExecuteScalarAsync(cancellationToken);
+        var usuario = value?.ToString();
+        return string.IsNullOrWhiteSpace(usuario) ? null : usuario.Trim();
+    }
+
+    public async Task<string> TraerSecuenciaResumenAsync(string companiaId, CancellationToken cancellationToken = default)
+    {
+        return await _accesoDatos.EjecutarComandoAsync("usptraerSecuenciaResumen", "@CompaniaId", companiaId, cancellationToken);
+    }
+
+    public async Task<string> ResumenPorFechaAsync(DateTime fechaInicio, DateTime fechaFin, CancellationToken cancellationToken = default)
+    {
+        var data = $"{fechaInicio:yyyy-MM-dd}|{fechaFin:yyyy-MM-dd}";
+        var result = await _accesoDatos.EjecutarComandoAsync("uspResumenFecha", "@Data", data, cancellationToken);
+        return string.IsNullOrWhiteSpace(result) ? "~" : result;
     }
 
     public async Task<CredencialesSunat?> ObtenerCredencialesSunatAsync(int companiaId, CancellationToken cancellationToken = default)

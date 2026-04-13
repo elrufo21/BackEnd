@@ -5575,11 +5575,11 @@
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "c:\\Users\\User\\Desktop\\desarrollo-sgo\\BackEnd\\src\\Infrastructure\\Ecommerce.Infrastructure.csproj",
+      "projectUniqueName": "C:\\Users\\User\\Desktop\\desarrollo-sgo\\BackEnd\\src\\Infrastructure\\Ecommerce.Infrastructure.csproj",
       "projectName": "Ecommerce.Infrastructure",
-      "projectPath": "c:\\Users\\User\\Desktop\\desarrollo-sgo\\BackEnd\\src\\Infrastructure\\Ecommerce.Infrastructure.csproj",
+      "projectPath": "C:\\Users\\User\\Desktop\\desarrollo-sgo\\BackEnd\\src\\Infrastructure\\Ecommerce.Infrastructure.csproj",
       "packagesPath": "C:\\Users\\User\\.nuget\\packages\\",
-      "outputPath": "c:\\Users\\User\\Desktop\\desarrollo-sgo\\BackEnd\\src\\Infrastructure\\obj\\",
+      "outputPath": "C:\\Users\\User\\Desktop\\desarrollo-sgo\\BackEnd\\src\\Infrastructure\\obj\\",
       "projectStyle": "PackageReference",
       "fallbackFolders": [
         "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"

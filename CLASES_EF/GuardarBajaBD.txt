@@ -1,0 +1,43 @@
+public void guardarResumen()
+        {
+            if (txtticket.Text.Length == 0)
+            {
+                MessageBox.Show("No se genero el ticket de respuesta...ocurrio un error en el servidor sunat...volver intentar mas tarde", "ERROR", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                limpiaResSunat();
+                gvlista.Focus();
+            }
+            else
+            {
+                string xvalue = string.Empty;
+                xvalue ="1|" + DateTime.Now.ToString("yyyyMMdd") + "|" +
+                xsecuencia + "|" + xFechaRefencia.ToString() + "|" + decimal.Parse(lblsubtotal.Text) + "|" +
+                decimal.Parse(lbligv.Text) + "|" + decimal.Parse(lbltotal.Text) + "|" + txtticket.Text + "|" +
+                TXTCOD_SUNAT.Text + "|" + TXTHASHCDR.Text + "|" +xUsuario+ "|" + xflac.ToString() + "|" +
+                xRangoNumeros + "|" + decimal.Parse(lblICBPER.Text) + "[";
+                int count = gvlista.Rows.Count;
+                for (int i = 0; i < count; i++)
+                {
+                    xvalue += Convert.ToString(gvlista.Rows[i].Cells[0].Value);
+                    if (i == count - 1) break;
+                    else xvalue += ";";
+                }
+                AccesoDatos daSQL = new AccesoDatos("con");
+                string rpt = daSQL.ejecutarComando("uspinsertarRB", "@ListaOrden", xvalue);
+                if (rpt == "")
+                {
+                    men.ErrorGuardado();
+                }
+                else
+                {
+                    xflac = 0;
+                    men.GuardoCorrecto();
+                    if (cmdEstados.Text.Contains("PENDIENTES")) listar();
+                    else listarBajas();
+                    dataB = rpt;
+                    Cadena.llenaTabla(TablaB, dataB);
+                    gvResumen.DataSource = bsB;
+                    ocultarColumna();
+                    totalB();
+                }
+            }
+        }

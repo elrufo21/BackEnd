@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
+using Ecommerce.Api.Legacy;
 using Ecommerce.Application;
 using Ecommerce.Application.Contracts.Areas;
 using Ecommerce.Application.Contracts.Clientes;
@@ -77,6 +78,7 @@ builder.Services.AddTransient<INotaPedido, NotaPedidoRepository>();
 builder.Services.AddTransient<ICompra, CompraRepository>();
 builder.Services.AddTransient<ICliente, ClienteRepository>();
 builder.Services.AddTransient<ICompania, CompaniaRepository>();
+builder.Services.AddTransient<ICpeGateway, CpeGateway>();
 builder.Services.AddTransient<IProveedor, ProveedorRepository>();
 builder.Services.AddTransient<ICuentaProveedor, CuentaProveedorRepository>();
 builder.Services.AddTransient<IUsuariosCrud, UsuariosCrudRepository>();

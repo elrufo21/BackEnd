@@ -40,6 +40,7 @@ C:\Users\User\Desktop\desarrollo-sgo\BackEnd\publish\MimeKit.dll
 C:\Users\User\Desktop\desarrollo-sgo\BackEnd\publish\Newtonsoft.Json.dll
 C:\Users\User\Desktop\desarrollo-sgo\BackEnd\publish\BouncyCastle.Crypto.dll
 C:\Users\User\Desktop\desarrollo-sgo\BackEnd\publish\SendGrid.dll
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\publish\ICSharpCode.SharpZipLib.dll
 C:\Users\User\Desktop\desarrollo-sgo\BackEnd\publish\StarkbankEcdsa.dll
 C:\Users\User\Desktop\desarrollo-sgo\BackEnd\publish\Stripe.net.dll
 C:\Users\User\Desktop\desarrollo-sgo\BackEnd\publish\Swashbuckle.AspNetCore.Swagger.dll

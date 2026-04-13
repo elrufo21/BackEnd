@@ -25,6 +25,7 @@ public class ProductoRepository : IProducto
         var rawData = (producto.Data ?? string.Empty).Trim();
         if (!string.IsNullOrWhiteSpace(rawData) && rawData.Contains('|'))
         {
+            rawData = ReplaceProductoImagenInRawData(rawData, producto.ProductoImagen);
             var resultRaw = await _accesoDatos.EjecutarComandoAsync("uspIngresarProducto", "@Data", rawData, cancellationToken);
             return string.IsNullOrWhiteSpace(resultRaw) ? "error" : resultRaw;
         }
@@ -125,6 +126,70 @@ public class ProductoRepository : IProducto
         var result = await _accesoDatos.EjecutarComandoAsync("uspBuscaWebProducto", "@Descripcion", nombre, cancellationToken);
         var lista = string.IsNullOrWhiteSpace(result) ? new List<EListaProducto>() : Cadena.AlistaCamposPro(result);
         return ApplyPagination(lista, page, pageSize);
+    }
+
+    public async Task<long> GuardarUnidadMedidaProductoAsync(GuardarUnidadMedidaProductoRequest request, CancellationToken cancellationToken = default)
+    {
+        await using var con = new SqlConnection(_connectionString);
+        await using var cmd = new SqlCommand("dbo.uspGuardarUnidadMedidaProducto", con)
+        {
+            CommandTimeout = 300,
+            CommandType = CommandType.StoredProcedure
+        };
+
+        cmd.Parameters.Add(new SqlParameter("@IdProducto", SqlDbType.Decimal)
+        {
+            Precision = 20,
+            Scale = 0,
+            Value = request.IdProducto
+        });
+        cmd.Parameters.Add(new SqlParameter("@UMDescripcion", SqlDbType.VarChar, 100)
+        {
+            Value = request.UMDescripcion.Trim()
+        });
+        cmd.Parameters.Add(new SqlParameter("@ValorUM", SqlDbType.Decimal)
+        {
+            Precision = 18,
+            Scale = 2,
+            Value = request.ValorUM
+        });
+        cmd.Parameters.Add(new SqlParameter("@PrecioVenta", SqlDbType.Decimal)
+        {
+            Precision = 18,
+            Scale = 2,
+            Value = request.PrecioVenta
+        });
+        cmd.Parameters.Add(new SqlParameter("@PrecioVentaB", SqlDbType.Decimal)
+        {
+            Precision = 18,
+            Scale = 2,
+            Value = request.PrecioVentaB
+        });
+        cmd.Parameters.Add(new SqlParameter("@PrecioCosto", SqlDbType.Decimal)
+        {
+            Precision = 18,
+            Scale = 2,
+            Value = request.PrecioCosto
+        });
+
+        await con.OpenAsync(cancellationToken);
+        if (await StoredProcedureHasParameterAsync(con, "uspGuardarUnidadMedidaProducto", "@UnidadImagen", cancellationToken))
+        {
+            cmd.Parameters.Add(new SqlParameter("@UnidadImagen", SqlDbType.VarChar, -1)
+            {
+                Value = string.IsNullOrWhiteSpace(request.UnidadImagen)
+                    ? DBNull.Value
+                    : request.UnidadImagen.Trim()
+            });
+        }
+
+        var result = await cmd.ExecuteScalarAsync(cancellationToken);
+        if (result is null || result == DBNull.Value)
+        {
+            throw new InvalidOperationException("El procedimiento no devolvió IdUm.");
+        }
+
+        return Convert.ToInt64(result);
     }
 
     private static Producto MapProducto(SqlDataReader reader)
@@ -288,5 +353,55 @@ public class ProductoRepository : IProducto
 
         detalleUm = string.IsNullOrWhiteSpace(rawDetalle) ? null : rawDetalle.Trim();
         return true;
+    }
+
+    private static string ReplaceProductoImagenInRawData(string rawData, string? productoImagen)
+    {
+        if (productoImagen is null)
+        {
+            return rawData;
+        }
+
+        var openIndex = rawData.IndexOf('[');
+        var closeIndex = rawData.LastIndexOf(']');
+        var hasDetalle = openIndex >= 0 && closeIndex > openIndex;
+
+        var cabecera = hasDetalle ? rawData[..openIndex] : rawData;
+        var campos = cabecera.Split('|');
+        if (campos.Length < 14)
+        {
+            return rawData;
+        }
+
+        campos[11] = productoImagen.Trim();
+        var cabeceraActualizada = string.Join("|", campos);
+        return hasDetalle ? $"{cabeceraActualizada}{rawData[openIndex..]}" : cabeceraActualizada;
+    }
+
+    private static async Task<bool> StoredProcedureHasParameterAsync(
+        SqlConnection connection,
+        string procedureName,
+        string parameterName,
+        CancellationToken cancellationToken)
+    {
+        const string sql = """
+            SELECT TOP 1 1
+            FROM sys.parameters p
+            INNER JOIN sys.objects o ON o.object_id = p.object_id
+            WHERE o.type = 'P'
+              AND o.name = @ProcedureName
+              AND p.name = @ParameterName;
+            """;
+
+        await using var cmd = new SqlCommand(sql, connection)
+        {
+            CommandTimeout = 30,
+            CommandType = CommandType.Text
+        };
+        cmd.Parameters.AddWithValue("@ProcedureName", procedureName);
+        cmd.Parameters.AddWithValue("@ParameterName", parameterName);
+
+        var result = await cmd.ExecuteScalarAsync(cancellationToken);
+        return result is not null && result != DBNull.Value;
     }
 }
