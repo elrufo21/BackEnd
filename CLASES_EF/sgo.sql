@@ -715,11 +715,14 @@ CREATE TABLE [dbo].[Compania](
 	[PasswordCorreo] [varchar](80) NULL,
 	[CorreosAdmin] [varchar](max) NULL,
 	[TIPO_PROCESO] [int] NULL,
+	[BoletaPorLote] [bit] NOT NULL,
 PRIMARY KEY CLUSTERED 
 (
 	[CompaniaId] ASC
 )WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
 ) ON [PRIMARY] TEXTIMAGE_ON [PRIMARY]
+GO
+ALTER TABLE [dbo].[Compania] ADD  CONSTRAINT [DF_Compania_BoletaPorLote]  DEFAULT ((1)) FOR [BoletaPorLote]
 GO
 /****** Object:  Table [dbo].[Compras]    Script Date: 13/04/2026 14:20:19 ******/
 SET ANSI_NULLS ON
@@ -13280,7 +13283,23 @@ end
 else
 begin
     if(@NotaDocu='FACTURA')
-        set @NotaEstado='PENDIENTE'
+    begin
+        -- FACTURA debe comportarse igual que BOLETA:
+        -- - Si es CREDITO => EMITIDO con saldo
+        -- - Si es ALCONTADO => CANCELADO con saldo 0
+        if(@NotaCondicion='CREDITO')
+        begin
+            set @NotaEstado='EMITIDO'
+            set @NotaSaldo=@NotaPagar
+            set @NotaAcuenta=0
+        end
+        else
+        begin
+            set @NotaEstado='CANCELADO'
+            set @NotaSaldo=0
+            set @NotaAcuenta=@NotaPagar
+        end
+    end
     else if(@NotaDocu='PROFORMA')
         set @NotaEstado='PENDIENTE'
     else
@@ -16009,7 +16028,8 @@ BEGIN
                 ISNULL(c.CompaniaPFX, '') + '|' +         -- Certificado Base64  
                 ISNULL(c.CompaniaClave, '') + '|' +       -- Clave Certificado  
                 ISNULL(CONVERT(VARCHAR, c.TIPO_PROCESO), '3')+'|'+ -- Entorno  
-                ISNULL(c.CompaniaTelefono,'')
+                ISNULL(c.CompaniaTelefono,'')+'|'+
+                ISNULL(CONVERT(VARCHAR, c.BoletaPorLote), '1')
 
             FROM Usuarios U                        
             INNER JOIN Personal p ON p.PersonalId = U.PersonalId                        

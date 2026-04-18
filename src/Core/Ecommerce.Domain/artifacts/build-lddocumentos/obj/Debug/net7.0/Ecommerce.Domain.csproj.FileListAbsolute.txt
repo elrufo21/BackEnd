@@ -1,0 +1,12 @@
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\src\Core\Ecommerce.Domain\artifacts\build-lddocumentos\bin\Debug\net7.0\Ecommerce.Domain.deps.json
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\src\Core\Ecommerce.Domain\artifacts\build-lddocumentos\bin\Debug\net7.0\Ecommerce.Domain.dll
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\src\Core\Ecommerce.Domain\artifacts\build-lddocumentos\bin\Debug\net7.0\Ecommerce.Domain.pdb
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\src\Core\Ecommerce.Domain\artifacts\build-lddocumentos\obj\Debug\net7.0\Ecommerce.Domain.csproj.AssemblyReference.cache
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\src\Core\Ecommerce.Domain\artifacts\build-lddocumentos\obj\Debug\net7.0\Ecommerce.Domain.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\src\Core\Ecommerce.Domain\artifacts\build-lddocumentos\obj\Debug\net7.0\Ecommerce.Domain.AssemblyInfoInputs.cache
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\src\Core\Ecommerce.Domain\artifacts\build-lddocumentos\obj\Debug\net7.0\Ecommerce.Domain.AssemblyInfo.cs
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\src\Core\Ecommerce.Domain\artifacts\build-lddocumentos\obj\Debug\net7.0\Ecommerce.Domain.csproj.CoreCompileInputs.cache
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\src\Core\Ecommerce.Domain\artifacts\build-lddocumentos\obj\Debug\net7.0\Ecommerce.Domain.dll
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\src\Core\Ecommerce.Domain\artifacts\build-lddocumentos\obj\Debug\net7.0\refint\Ecommerce.Domain.dll
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\src\Core\Ecommerce.Domain\artifacts\build-lddocumentos\obj\Debug\net7.0\Ecommerce.Domain.pdb
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\src\Core\Ecommerce.Domain\artifacts\build-lddocumentos\obj\Debug\net7.0\ref\Ecommerce.Domain.dll

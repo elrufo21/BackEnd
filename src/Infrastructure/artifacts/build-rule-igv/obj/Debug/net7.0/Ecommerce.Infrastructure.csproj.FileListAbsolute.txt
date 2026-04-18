@@ -1,0 +1,17 @@
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\src\Infrastructure\artifacts\build-rule-igv\bin\Debug\net7.0\Ecommerce.Infrastructure.deps.json
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\src\Infrastructure\artifacts\build-rule-igv\bin\Debug\net7.0\Ecommerce.Infrastructure.runtimeconfig.json
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\src\Infrastructure\artifacts\build-rule-igv\bin\Debug\net7.0\Ecommerce.Infrastructure.dll
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\src\Infrastructure\artifacts\build-rule-igv\bin\Debug\net7.0\Ecommerce.Infrastructure.pdb
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\src\Infrastructure\artifacts\build-rule-igv\bin\Debug\net7.0\Ecommerce.Application.dll
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\src\Infrastructure\artifacts\build-rule-igv\bin\Debug\net7.0\Ecommerce.Domain.dll
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\src\Infrastructure\artifacts\build-rule-igv\bin\Debug\net7.0\Ecommerce.Application.pdb
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\src\Infrastructure\artifacts\build-rule-igv\bin\Debug\net7.0\Ecommerce.Domain.pdb
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\src\Infrastructure\artifacts\build-rule-igv\obj\Debug\net7.0\Ecommerce.Infrastructure.csproj.AssemblyReference.cache
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\src\Infrastructure\artifacts\build-rule-igv\obj\Debug\net7.0\Ecommerce.Infrastructure.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\src\Infrastructure\artifacts\build-rule-igv\obj\Debug\net7.0\Ecommerce.Infrastructure.csproj.CoreCompileInputs.cache
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\src\Infrastructure\artifacts\build-rule-igv\obj\Debug\net7.0\Ecommerce.Infrastructure.csproj.CopyComplete
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\src\Infrastructure\artifacts\build-rule-igv\obj\Debug\net7.0\Ecommerce.Infrastructure.dll
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\src\Infrastructure\artifacts\build-rule-igv\obj\Debug\net7.0\refint\Ecommerce.Infrastructure.dll
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\src\Infrastructure\artifacts\build-rule-igv\obj\Debug\net7.0\Ecommerce.Infrastructure.pdb
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\src\Infrastructure\artifacts\build-rule-igv\obj\Debug\net7.0\Ecommerce.Infrastructure.genruntimeconfig.cache
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\src\Infrastructure\artifacts\build-rule-igv\obj\Debug\net7.0\ref\Ecommerce.Infrastructure.dll

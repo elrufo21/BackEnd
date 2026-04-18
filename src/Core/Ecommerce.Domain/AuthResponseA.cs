@@ -19,6 +19,7 @@ public class AuthResponseA
     public string? ClaveCertificado { get; set; }
     public string? Entorno { get; set; }
     public string? CompaniaTelefono { get; set; }
+    public bool BoletaPorLote { get; set; } = true;
     //public string? RUC { get; set; }
     //public string? UsuarioSerie { get; set; }
     //public string? Avatar { get; set; }

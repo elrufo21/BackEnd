@@ -29,4 +29,5 @@ public class Compania
     public string? CorreoSGO { get; set; }
     public string? PasswordCorreo { get; set; }
     public string? CorreosAdmin { get; set; }
+    public bool BoletaPorLote { get; set; } = true;
 }

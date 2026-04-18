@@ -1,4 +1,5 @@
 using System.Data;
+using System.Globalization;
 using System.Text;
 using Ecommerce.Application.Contracts.NotaPedido;
 using Ecommerce.Domain;
@@ -83,6 +84,45 @@ public class NotaPedidoRepository : INotaPedido
         return await _accesoDatos.EjecutarComandoAsync("uspListaDocumentos", "@Data", data, cancellationToken);
     }
 
+    public async Task<string> ListarLdDocumentosAsync(int mes, int anno, CancellationToken cancellationToken = default)
+    {
+        await using var con = new SqlConnection(_connectionString);
+        await using var cmd = new SqlCommand("LDdocumentos", con)
+        {
+            CommandTimeout = 300,
+            CommandType = CommandType.StoredProcedure
+        };
+        cmd.Parameters.AddWithValue("@Mes", mes);
+        cmd.Parameters.AddWithValue("@ANNO", anno);
+
+        await con.OpenAsync(cancellationToken);
+        var result = await cmd.ExecuteScalarAsync(cancellationToken);
+        var texto = result?.ToString();
+        return string.IsNullOrWhiteSpace(texto) ? "~" : texto;
+    }
+
+    public async Task<string> ListarLdDocumentosRangoAsync(DateTime fechaInicio, DateTime fechaFin, CancellationToken cancellationToken = default)
+    {
+        if (fechaInicio.Date > fechaFin.Date)
+        {
+            return "~";
+        }
+
+        await using var con = new SqlConnection(_connectionString);
+        await using var cmd = new SqlCommand("LDdocumentos", con)
+        {
+            CommandTimeout = 300,
+            CommandType = CommandType.StoredProcedure
+        };
+        cmd.Parameters.AddWithValue("@FechaInicio", fechaInicio.Date);
+        cmd.Parameters.AddWithValue("@FechaFin", fechaFin.Date);
+
+        await con.OpenAsync(cancellationToken);
+        var result = await cmd.ExecuteScalarAsync(cancellationToken);
+        var texto = result?.ToString();
+        return string.IsNullOrWhiteSpace(texto) ? "~" : texto;
+    }
+
     public async Task<string> ListarBajasAsync(string data, CancellationToken cancellationToken = default)
     {
         return await _accesoDatos.EjecutarComandoAsync("uspListaBajas", "@Data", data, cancellationToken);
@@ -151,6 +191,109 @@ public class NotaPedidoRepository : INotaPedido
         return string.IsNullOrWhiteSpace(cdr) ? null : cdr.Trim();
     }
 
+    public async Task<int> ActualizarRespuestaSunatDocumentoVentaPorResumenAsync(
+        long resumenId,
+        string codigoSunat,
+        string mensajeSunat,
+        string hashCdr,
+        CancellationToken cancellationToken = default)
+    {
+        if (resumenId <= 0)
+        {
+            return 0;
+        }
+
+        await using var con = new SqlConnection(_connectionString);
+        await con.OpenAsync(cancellationToken);
+
+        const string sqlResumen = @"
+            SELECT TOP 1
+                CompaniaId,
+                FechaReferencia,
+                NULLIF(LTRIM(RTRIM(RangoNumero)), '') AS RangoNumero
+            FROM ResumenBoletas
+            WHERE ResumenId = @ResumenId;";
+
+        int companiaId;
+        DateTime fechaReferencia;
+        string? rangoNumero;
+
+        await using (var cmdResumen = new SqlCommand(sqlResumen, con))
+        {
+            cmdResumen.Parameters.AddWithValue("@ResumenId", resumenId);
+            await using var reader = await cmdResumen.ExecuteReaderAsync(cancellationToken);
+            if (!await reader.ReadAsync(cancellationToken))
+            {
+                return 0;
+            }
+
+            if (reader["CompaniaId"] == DBNull.Value || reader["FechaReferencia"] == DBNull.Value)
+            {
+                return 0;
+            }
+
+            companiaId = Convert.ToInt32(reader["CompaniaId"], CultureInfo.InvariantCulture);
+            fechaReferencia = Convert.ToDateTime(reader["FechaReferencia"], CultureInfo.InvariantCulture).Date;
+            rangoNumero = reader["RangoNumero"] == DBNull.Value ? null : reader["RangoNumero"]?.ToString();
+        }
+
+        var filtroRango = ParsearFiltroRango(rangoNumero);
+
+        var sql = new StringBuilder("""
+            UPDATE d
+               SET d.CodigoSunat = @CodigoSunat,
+                   d.MensajeSunat = @MensajeSunat
+            """);
+
+        if (!string.IsNullOrWhiteSpace(hashCdr))
+        {
+            sql.AppendLine(",                   d.DocuHash = @DocuHash");
+        }
+
+        sql.Append("""
+            FROM DocumentoVenta d
+            WHERE d.CompaniaId = @CompaniaId
+              AND d.TipoCodigo = '03'
+              AND d.DocuEmision = @FechaReferencia
+              AND d.EstadoSunat = 'ENVIADO'
+            """);
+
+        if (filtroRango.Tipo == TipoFiltroRango.ComprobanteUnico)
+        {
+            sql.AppendLine("  AND d.DocuSerie = @SerieInicio");
+            sql.AppendLine("  AND TRY_CONVERT(bigint, d.DocuNumero) = @NumeroInicio");
+        }
+        else if (filtroRango.Tipo == TipoFiltroRango.RangoMismaSerie)
+        {
+            sql.AppendLine("  AND d.DocuSerie = @SerieInicio");
+            sql.AppendLine("  AND TRY_CONVERT(bigint, d.DocuNumero) BETWEEN @NumeroInicio AND @NumeroFin");
+        }
+
+        await using var cmdUpdate = new SqlCommand(sql.ToString(), con);
+        cmdUpdate.Parameters.AddWithValue("@CodigoSunat", (object?)codigoSunat ?? string.Empty);
+        cmdUpdate.Parameters.AddWithValue("@MensajeSunat", (object?)mensajeSunat ?? string.Empty);
+        cmdUpdate.Parameters.AddWithValue("@CompaniaId", companiaId);
+        cmdUpdate.Parameters.AddWithValue("@FechaReferencia", fechaReferencia);
+
+        if (!string.IsNullOrWhiteSpace(hashCdr))
+        {
+            cmdUpdate.Parameters.AddWithValue("@DocuHash", hashCdr.Trim());
+        }
+
+        if (filtroRango.Tipo == TipoFiltroRango.ComprobanteUnico || filtroRango.Tipo == TipoFiltroRango.RangoMismaSerie)
+        {
+            cmdUpdate.Parameters.AddWithValue("@SerieInicio", filtroRango.Serie);
+            cmdUpdate.Parameters.AddWithValue("@NumeroInicio", filtroRango.NumeroInicio);
+        }
+
+        if (filtroRango.Tipo == TipoFiltroRango.RangoMismaSerie)
+        {
+            cmdUpdate.Parameters.AddWithValue("@NumeroFin", filtroRango.NumeroFin);
+        }
+
+        return await cmdUpdate.ExecuteNonQueryAsync(cancellationToken);
+    }
+
     public async Task<string?> ObtenerUsuarioDocumentoVentaAsync(IEnumerable<long> docuIds, CancellationToken cancellationToken = default)
     {
         var ids = docuIds?
@@ -180,6 +323,73 @@ public class NotaPedidoRepository : INotaPedido
         var value = await cmd.ExecuteScalarAsync(cancellationToken);
         var usuario = value?.ToString();
         return string.IsNullOrWhiteSpace(usuario) ? null : usuario.Trim();
+    }
+
+    private enum TipoFiltroRango
+    {
+        Ninguno = 0,
+        ComprobanteUnico = 1,
+        RangoMismaSerie = 2
+    }
+
+    private readonly record struct FiltroRango(TipoFiltroRango Tipo, string Serie, long NumeroInicio, long NumeroFin);
+
+    private static FiltroRango ParsearFiltroRango(string? rangoNumero)
+    {
+        if (string.IsNullOrWhiteSpace(rangoNumero))
+        {
+            return new FiltroRango(TipoFiltroRango.Ninguno, string.Empty, 0, 0);
+        }
+
+        var valor = rangoNumero.Trim();
+        if (TryParseComprobante(valor, out var serieUnica, out var numeroUnico))
+        {
+            return new FiltroRango(TipoFiltroRango.ComprobanteUnico, serieUnica, numeroUnico, numeroUnico);
+        }
+
+        var partes = valor.Split('-', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (partes.Length == 4 &&
+            long.TryParse(partes[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out var numeroInicio) &&
+            long.TryParse(partes[3], NumberStyles.Integer, CultureInfo.InvariantCulture, out var numeroFin) &&
+            !string.IsNullOrWhiteSpace(partes[0]) &&
+            !string.IsNullOrWhiteSpace(partes[2]) &&
+            string.Equals(partes[0], partes[2], StringComparison.OrdinalIgnoreCase))
+        {
+            if (numeroInicio > numeroFin)
+            {
+                (numeroInicio, numeroFin) = (numeroFin, numeroInicio);
+            }
+
+            return new FiltroRango(TipoFiltroRango.RangoMismaSerie, partes[0], numeroInicio, numeroFin);
+        }
+
+        return new FiltroRango(TipoFiltroRango.Ninguno, string.Empty, 0, 0);
+    }
+
+    private static bool TryParseComprobante(string valor, out string serie, out long numero)
+    {
+        serie = string.Empty;
+        numero = 0;
+
+        if (string.IsNullOrWhiteSpace(valor))
+        {
+            return false;
+        }
+
+        var partes = valor.Split('-', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (partes.Length != 2)
+        {
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(partes[0]) ||
+            !long.TryParse(partes[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out numero))
+        {
+            return false;
+        }
+
+        serie = partes[0];
+        return true;
     }
 
     public async Task<string> TraerSecuenciaResumenAsync(string companiaId, CancellationToken cancellationToken = default)

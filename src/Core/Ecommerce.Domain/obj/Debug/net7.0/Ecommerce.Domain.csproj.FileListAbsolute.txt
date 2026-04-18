@@ -151,3 +151,15 @@ C:\Users\User\Desktop\desarrollo-sgo\BackEnd\src\Core\Ecommerce.Domain\obj\Debug
 C:\Users\User\Desktop\desarrollo-sgo\BackEnd\src\Core\Ecommerce.Domain\obj\Debug\net7.0\refint\Ecommerce.Domain.dll
 C:\Users\User\Desktop\desarrollo-sgo\BackEnd\src\Core\Ecommerce.Domain\obj\Debug\net7.0\Ecommerce.Domain.pdb
 C:\Users\User\Desktop\desarrollo-sgo\BackEnd\src\Core\Ecommerce.Domain\obj\Debug\net7.0\ref\Ecommerce.Domain.dll
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\artifacts\api-lista-fix\Ecommerce.Domain.deps.json
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\artifacts\api-lista-fix\Ecommerce.Domain.dll
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\artifacts\api-lista-fix\Ecommerce.Domain.pdb
+c:\Users\User\Desktop\desarrollo-sgo\BackEnd\tmp-build-api\Ecommerce.Domain.deps.json
+c:\Users\User\Desktop\desarrollo-sgo\BackEnd\tmp-build-api\Ecommerce.Domain.dll
+c:\Users\User\Desktop\desarrollo-sgo\BackEnd\tmp-build-api\Ecommerce.Domain.pdb
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\tmp-build-api-issuetime\Ecommerce.Domain.deps.json
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\tmp-build-api-issuetime\Ecommerce.Domain.dll
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\tmp-build-api-issuetime\Ecommerce.Domain.pdb
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\artifacts\api-build\Ecommerce.Domain.deps.json
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\artifacts\api-build\Ecommerce.Domain.dll
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\artifacts\api-build\Ecommerce.Domain.pdb

@@ -1,10 +1,100 @@
 ﻿using System;
+using System.Globalization;
 using System.Xml;
 using BE = BusinessEntities;
 namespace Xml
 {
     public class CrearXML
     {
+        private static string F2(decimal value) => value.ToString("0.00", CultureInfo.InvariantCulture);
+        private static string F2(decimal? value) => (value ?? 0m).ToString("0.00", CultureInfo.InvariantCulture);
+        private static string ResolveIssueTime(string? horaRegistro)
+        {
+            if (string.IsNullOrWhiteSpace(horaRegistro))
+            {
+                return ObtenerAhoraCpe().ToString("HH:mm:ss", CultureInfo.InvariantCulture);
+            }
+
+            var raw = horaRegistro.Trim();
+            if (raw == "0" || raw == "00:00" || raw == "00:00:00" || raw == "0:0:0")
+            {
+                return ObtenerAhoraCpe().ToString("HH:mm:ss", CultureInfo.InvariantCulture);
+            }
+
+            if (TryParseHoraSimple(raw, out var horaSimple))
+            {
+                return horaSimple;
+            }
+
+            if (DateTimeOffset.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.AllowWhiteSpaces, out var parsedOffset) ||
+                DateTimeOffset.TryParse(raw, CultureInfo.CurrentCulture, DateTimeStyles.AllowWhiteSpaces, out parsedOffset))
+            {
+                var horaLocal = ConvertirACpe(parsedOffset);
+                if (horaLocal.TimeOfDay == TimeSpan.Zero)
+                {
+                    return ObtenerAhoraCpe().ToString("HH:mm:ss", CultureInfo.InvariantCulture);
+                }
+
+                return horaLocal.ToString("HH:mm:ss", CultureInfo.InvariantCulture);
+            }
+
+            if (DateTime.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed) ||
+                DateTime.TryParse(raw, CultureInfo.CurrentCulture, DateTimeStyles.None, out parsed))
+            {
+                if (parsed.TimeOfDay == TimeSpan.Zero)
+                {
+                    return ObtenerAhoraCpe().ToString("HH:mm:ss", CultureInfo.InvariantCulture);
+                }
+
+                return parsed.ToString("HH:mm:ss", CultureInfo.InvariantCulture);
+            }
+
+            return raw;
+        }
+
+        private static bool TryParseHoraSimple(string valor, out string horaNormalizada)
+        {
+            horaNormalizada = string.Empty;
+            var formatos = new[] { "H:m", "H:m:s", "HH:mm", "HH:mm:ss" };
+
+            if (DateTime.TryParseExact(valor, formatos, CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed) ||
+                DateTime.TryParseExact(valor, formatos, CultureInfo.CurrentCulture, DateTimeStyles.None, out parsed))
+            {
+                horaNormalizada = parsed.ToString("HH:mm:ss", CultureInfo.InvariantCulture);
+                return true;
+            }
+
+            return false;
+        }
+
+        private static DateTime ObtenerAhoraCpe()
+        {
+            return ConvertirACpe(DateTimeOffset.UtcNow);
+        }
+
+        private static DateTime ConvertirACpe(DateTimeOffset valor)
+        {
+            return TimeZoneInfo.ConvertTime(valor, ResolverZonaHorariaCpe()).DateTime;
+        }
+
+        private static TimeZoneInfo ResolverZonaHorariaCpe()
+        {
+            var zonas = new[] { "SA Pacific Standard Time", "America/Lima" };
+            foreach (var zonaId in zonas)
+            {
+                try
+                {
+                    return TimeZoneInfo.FindSystemTimeZoneById(zonaId);
+                }
+                catch
+                {
+                    // Continuar con la siguiente zona.
+                }
+            }
+
+            return TimeZoneInfo.Local;
+        }
+
         public int CPE(BE.CPE comprobante, string nomArchivo, string ruta)
         {
             try
@@ -24,7 +114,7 @@ namespace Xml
 	<cbc:ProfileID schemeName='Tipo de Operacion' schemeAgencyName='PE:SUNAT' schemeURI='urn:pe:gob:sunat:cpe:see:gem:catalogos:catalogo51'>" + comprobante.TIPO_OPERACION + @"</cbc:ProfileID>
 	<cbc:ID>" + comprobante.NRO_COMPROBANTE + @"</cbc:ID>
 	<cbc:IssueDate>" + comprobante.FECHA_DOCUMENTO + @"</cbc:IssueDate>
-    <cbc:IssueTime>" + comprobante.HORA_REGISTRO + @"</cbc:IssueTime>";
+    <cbc:IssueTime>" + ResolveIssueTime(comprobante.HORA_REGISTRO) + @"</cbc:IssueTime>";
                 if (comprobante.FORMA_PAGO.Equals("Contado"))
                 {
                     xml = xml + @" <cbc:DueDate>" + comprobante.FECHA_VTO + @"</cbc:DueDate>";
@@ -363,7 +453,7 @@ namespace Xml
 				            <cbc:ID><![CDATA[" + comprobante.detalle[x].CODIGO + @"]]></cbc:ID>
 			            </cac:SellersItemIdentification>
                        <cac:CommodityClassification>
-                         <cbc:ItemClassificationCode listID='UNSPSC' listAgencyName='GS1 US' listName='Item Classification'>" + comprobante.detalle[x].CODIGO_SUNAT + @"</cbc:ItemClassificationCode>
+                         <cbc:ItemClassificationCode listID='UNSPSC' listAgencyName='GS1 US' listName='Item Classification'>50161509</cbc:ItemClassificationCode>
                        </cac:CommodityClassification>
                     </cac:Item>
 		            <cac:Price>
@@ -401,7 +491,7 @@ namespace Xml
     <cbc:CustomizationID>2.0</cbc:CustomizationID>
     <cbc:ID>" + comprobante.NRO_COMPROBANTE + @"</cbc:ID>
     <cbc:IssueDate>" + comprobante.FECHA_DOCUMENTO + @"</cbc:IssueDate>
-      <cbc:IssueTime>" + comprobante.HORA_REGISTRO + @"</cbc:IssueTime>";
+      <cbc:IssueTime>" + ResolveIssueTime(comprobante.HORA_REGISTRO) + @"</cbc:IssueTime>";
                 xml = xml + @" <cbc:DocumentCurrencyCode>" + comprobante.COD_MONEDA + @"</cbc:DocumentCurrencyCode>
     <cac:DiscrepancyResponse>
         <cbc:ReferenceID>" + comprobante.NRO_DOCUMENTO_MODIFICA + @"</cbc:ReferenceID>
@@ -556,7 +646,7 @@ namespace Xml
                         <cbc:ID><![CDATA[" + comprobante.detalle[x].CODIGO + @"]]></cbc:ID>
                     </cac:SellersItemIdentification>
                        <cac:CommodityClassification>
-                         <cbc:ItemClassificationCode listID='UNSPSC' listAgencyName='GS1 US' listName='Item Classification'>" + comprobante.detalle[x].CODIGO_SUNAT + @"</cbc:ItemClassificationCode>
+                         <cbc:ItemClassificationCode listID='UNSPSC' listAgencyName='GS1 US' listName='Item Classification'>50161509</cbc:ItemClassificationCode>
                        </cac:CommodityClassification>
                 </cac:Item>
                 <cac:Price>
@@ -593,7 +683,7 @@ namespace Xml
     <cbc:CustomizationID>2.0</cbc:CustomizationID>
     <cbc:ID>" + comprobante.NRO_COMPROBANTE + @"</cbc:ID>
     <cbc:IssueDate>" + comprobante.FECHA_DOCUMENTO + @"</cbc:IssueDate>
-    <cbc:IssueTime>00:00:00</cbc:IssueTime>
+    <cbc:IssueTime>" + ResolveIssueTime(comprobante.HORA_REGISTRO) + @"</cbc:IssueTime>
     <cbc:DocumentCurrencyCode>" + comprobante.COD_MONEDA + @"</cbc:DocumentCurrencyCode>
     <cac:DiscrepancyResponse>
         <cbc:ReferenceID>" + comprobante.NRO_DOCUMENTO_MODIFICA + @"</cbc:ReferenceID>
@@ -786,32 +876,32 @@ namespace Xml
                     xml = xml + @"<cac:Status>
                     <cbc:ConditionCode>" + comprobante.detalle[x].STATU + @"</cbc:ConditionCode>
                     </cac:Status>
-                    <sac:TotalAmount currencyID='" + comprobante.detalle[x].COD_MONEDA + "'>" + comprobante.detalle[x].TOTAL + @"</sac:TotalAmount>
+                    <sac:TotalAmount currencyID='" + comprobante.detalle[x].COD_MONEDA + "'>" + F2(comprobante.detalle[x].TOTAL) + @"</sac:TotalAmount>
                     <sac:BillingPayment>
-                    <cbc:PaidAmount currencyID='" + comprobante.detalle[x].COD_MONEDA + "'>" + comprobante.detalle[x].GRAVADA + @"</cbc:PaidAmount>
+                    <cbc:PaidAmount currencyID='" + comprobante.detalle[x].COD_MONEDA + "'>" + F2(comprobante.detalle[x].GRAVADA) + @"</cbc:PaidAmount>
                     <cbc:InstructionID>01</cbc:InstructionID>
                     </sac:BillingPayment>";
                     if ((comprobante.detalle[x].EXONERADO > 0))
                         xml = xml + @"<sac:BillingPayment>
-                    <cbc:PaidAmount currencyID='" + comprobante.detalle[x].COD_MONEDA + "'>" + comprobante.detalle[x].EXONERADO + @"</cbc:PaidAmount>
+                    <cbc:PaidAmount currencyID='" + comprobante.detalle[x].COD_MONEDA + "'>" + F2(comprobante.detalle[x].EXONERADO) + @"</cbc:PaidAmount>
                     <cbc:InstructionID>02</cbc:InstructionID>
                     </sac:BillingPayment>";
 
                     if ((comprobante.detalle[x].INAFECTO > 0))
                         xml = xml + @"<sac:BillingPayment>
-                    <cbc:PaidAmount currencyID='" + comprobante.detalle[x].COD_MONEDA + "'>" + comprobante.detalle[x].INAFECTO + @"</cbc:PaidAmount>
+                    <cbc:PaidAmount currencyID='" + comprobante.detalle[x].COD_MONEDA + "'>" + F2(comprobante.detalle[x].INAFECTO) + @"</cbc:PaidAmount>
                     <cbc:InstructionID>03</cbc:InstructionID>
                     </sac:BillingPayment>";
 
                     if ((comprobante.detalle[x].EXPORTACION > 0))
                         xml = xml + @"<sac:BillingPayment>
-                    <cbc:PaidAmount currencyID='" + comprobante.detalle[x].COD_MONEDA + "'>" + comprobante.detalle[x].EXPORTACION + @"</cbc:PaidAmount>
+                    <cbc:PaidAmount currencyID='" + comprobante.detalle[x].COD_MONEDA + "'>" + F2(comprobante.detalle[x].EXPORTACION) + @"</cbc:PaidAmount>
                     <cbc:InstructionID>04</cbc:InstructionID>
                     </sac:BillingPayment>";
 
                     if ((comprobante.detalle[x].GRATUITAS > 0))
                         xml = xml + @"<sac:BillingPayment>
-                    <cbc:PaidAmount currencyID='" + comprobante.detalle[x].COD_MONEDA + "'>" + comprobante.detalle[x].GRATUITAS + @"</cbc:PaidAmount>
+                    <cbc:PaidAmount currencyID='" + comprobante.detalle[x].COD_MONEDA + "'>" + F2(comprobante.detalle[x].GRATUITAS) + @"</cbc:PaidAmount>
                     <cbc:InstructionID>05</cbc:InstructionID>
                     </sac:BillingPayment>";
                     if ((comprobante.detalle[x].MONTO_CARGO_X_ASIG > 0))
@@ -821,14 +911,14 @@ namespace Xml
                             xml = xml + "<cbc:ChargeIndicator>true</cbc:ChargeIndicator>";
                         else
                             xml = xml + "<cbc:ChargeIndicator>false</cbc:ChargeIndicator>";
-                        xml = xml + "<cbc:Amount currencyID='" + comprobante.detalle[x].COD_MONEDA + "'>" + comprobante.detalle[x].MONTO_CARGO_X_ASIG + @"</cbc:Amount>
+                        xml = xml + "<cbc:Amount currencyID='" + comprobante.detalle[x].COD_MONEDA + "'>" + F2(comprobante.detalle[x].MONTO_CARGO_X_ASIG) + @"</cbc:Amount>
                     </cac:AllowanceCharge>";
                     }
                     if ((comprobante.detalle[x].ISC > 0))
                         xml = xml + @"<cac:TaxTotal>
-			        <cbc:TaxAmount currencyID='" + comprobante.detalle[x].COD_MONEDA + "'>" + comprobante.detalle[x].ISC + @"</cbc:TaxAmount>
+			        <cbc:TaxAmount currencyID='" + comprobante.detalle[x].COD_MONEDA + "'>" + F2(comprobante.detalle[x].ISC) + @"</cbc:TaxAmount>
 			        <cac:TaxSubtotal>
-                        <cbc:TaxAmount currencyID='" + comprobante.detalle[x].COD_MONEDA + "'>" + comprobante.detalle[x].ISC + @"</cbc:TaxAmount>
+                        <cbc:TaxAmount currencyID='" + comprobante.detalle[x].COD_MONEDA + "'>" + F2(comprobante.detalle[x].ISC) + @"</cbc:TaxAmount>
 				        <cac:TaxCategory>
                             <cac:TaxScheme>
                                 <cbc:ID>2000</cbc:ID>
@@ -841,9 +931,9 @@ namespace Xml
                     if ((comprobante.detalle[x].ICBPER > 0))
                     {
                         xml = xml + @"<cac:TaxTotal>
-                    <cbc:TaxAmount currencyID='" + comprobante.detalle[x].COD_MONEDA + "'>" + comprobante.detalle[x].ICBPER + @"</cbc:TaxAmount>
+                    <cbc:TaxAmount currencyID='" + comprobante.detalle[x].COD_MONEDA + "'>" + F2(comprobante.detalle[x].ICBPER) + @"</cbc:TaxAmount>
                     <cac:TaxSubtotal>
-                    <cbc:TaxAmount currencyID='" + comprobante.detalle[x].COD_MONEDA + "'>" + comprobante.detalle[x].ICBPER + @"</cbc:TaxAmount>
+                    <cbc:TaxAmount currencyID='" + comprobante.detalle[x].COD_MONEDA + "'>" + F2(comprobante.detalle[x].ICBPER) + @"</cbc:TaxAmount>
                     <cac:TaxCategory>
                     <cac:TaxScheme>
                     <cbc:ID>7152</cbc:ID>
@@ -855,9 +945,9 @@ namespace Xml
                     </cac:TaxTotal>";
                     }
                     xml = xml + @"<cac:TaxTotal>
-                    <cbc:TaxAmount currencyID='" + comprobante.detalle[x].COD_MONEDA + "'>" + comprobante.detalle[x].IGV + @"</cbc:TaxAmount>
+                    <cbc:TaxAmount currencyID='" + comprobante.detalle[x].COD_MONEDA + "'>" + F2(comprobante.detalle[x].IGV) + @"</cbc:TaxAmount>
                     <cac:TaxSubtotal>
-                    <cbc:TaxAmount currencyID='" + comprobante.detalle[x].COD_MONEDA + "'>" + comprobante.detalle[x].IGV + @"</cbc:TaxAmount>
+                    <cbc:TaxAmount currencyID='" + comprobante.detalle[x].COD_MONEDA + "'>" + F2(comprobante.detalle[x].IGV) + @"</cbc:TaxAmount>
                     <cac:TaxCategory>
                     <cac:TaxScheme>
                     <cbc:ID>1000</cbc:ID>
@@ -870,9 +960,9 @@ namespace Xml
 
                     if ((comprobante.detalle[x].OTROS > 0))
                         xml = xml + @"<cac:TaxTotal>
-			            <cbc:TaxAmount currencyID='" + comprobante.detalle[x].COD_MONEDA + "'>" + comprobante.detalle[x].OTROS + @"</cbc:TaxAmount>
+			            <cbc:TaxAmount currencyID='" + comprobante.detalle[x].COD_MONEDA + "'>" + F2(comprobante.detalle[x].OTROS) + @"</cbc:TaxAmount>
 			            <cac:TaxSubtotal>
-                            <cbc:TaxAmount currencyID='" + comprobante.detalle[x].COD_MONEDA + "'>" + comprobante.detalle[x].OTROS + @"</cbc:TaxAmount>
+                            <cbc:TaxAmount currencyID='" + comprobante.detalle[x].COD_MONEDA + "'>" + F2(comprobante.detalle[x].OTROS) + @"</cbc:TaxAmount>
 				            <cac:TaxCategory>
                                 <cac:TaxScheme>
                                     <cbc:ID>9999</cbc:ID>

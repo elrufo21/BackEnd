@@ -1,0 +1,7 @@
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\src\Api\artifacts\build-lddocumentos-legacy\obj\Debug\net7.0\Ecommerce.Api.csproj.AssemblyReference.cache
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\src\Api\artifacts\build-lddocumentos-legacy\obj\Debug\net7.0\Ecommerce.Api.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\src\Api\artifacts\build-lddocumentos-legacy\obj\Debug\net7.0\Ecommerce.Api.AssemblyInfoInputs.cache
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\src\Api\artifacts\build-lddocumentos-legacy\obj\Debug\net7.0\Ecommerce.Api.AssemblyInfo.cs
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\src\Api\artifacts\build-lddocumentos-legacy\obj\Debug\net7.0\Ecommerce.Api.csproj.CoreCompileInputs.cache
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\src\Api\artifacts\build-lddocumentos-legacy\obj\Debug\net7.0\Ecommerce.Api.MvcApplicationPartsAssemblyInfo.cs
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\src\Api\artifacts\build-lddocumentos-legacy\obj\Debug\net7.0\Ecommerce.Api.MvcApplicationPartsAssemblyInfo.cache

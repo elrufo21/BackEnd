@@ -1,0 +1,17 @@
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\src\Core\Ecommerce.Application\artifacts\bin\Debug\net7.0\Ecommerce.Application.deps.json
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\src\Core\Ecommerce.Application\artifacts\bin\Debug\net7.0\Ecommerce.Application.runtimeconfig.json
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\src\Core\Ecommerce.Application\artifacts\bin\Debug\net7.0\Ecommerce.Application.dll
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\src\Core\Ecommerce.Application\artifacts\bin\Debug\net7.0\Ecommerce.Application.pdb
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\src\Core\Ecommerce.Application\artifacts\bin\Debug\net7.0\Ecommerce.Domain.dll
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\src\Core\Ecommerce.Application\artifacts\bin\Debug\net7.0\Ecommerce.Domain.pdb
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\src\Core\Ecommerce.Application\artifacts\obj\Debug\net7.0\Ecommerce.Application.csproj.AssemblyReference.cache
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\src\Core\Ecommerce.Application\artifacts\obj\Debug\net7.0\Ecommerce.Application.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\src\Core\Ecommerce.Application\artifacts\obj\Debug\net7.0\Ecommerce.Application.AssemblyInfoInputs.cache
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\src\Core\Ecommerce.Application\artifacts\obj\Debug\net7.0\Ecommerce.Application.AssemblyInfo.cs
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\src\Core\Ecommerce.Application\artifacts\obj\Debug\net7.0\Ecommerce.Application.csproj.CoreCompileInputs.cache
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\src\Core\Ecommerce.Application\artifacts\obj\Debug\net7.0\Ecommerce.Application.csproj.CopyComplete
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\src\Core\Ecommerce.Application\artifacts\obj\Debug\net7.0\Ecommerce.Application.dll
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\src\Core\Ecommerce.Application\artifacts\obj\Debug\net7.0\refint\Ecommerce.Application.dll
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\src\Core\Ecommerce.Application\artifacts\obj\Debug\net7.0\Ecommerce.Application.pdb
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\src\Core\Ecommerce.Application\artifacts\obj\Debug\net7.0\Ecommerce.Application.genruntimeconfig.cache
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\src\Core\Ecommerce.Application\artifacts\obj\Debug\net7.0\ref\Ecommerce.Application.dll

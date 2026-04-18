@@ -158,27 +158,43 @@ IF EXISTS(
 begin
     select 'EXISTE'
 end
-else
-begin
-    if(@NotaDocu='FACTURA')
-        set @NotaEstado='PENDIENTE'
-    else if(@NotaDocu='PROFORMA')
-        set @NotaEstado='PENDIENTE'
     else
     begin
-        if(@NotaCondicion='CREDITO')
+        if(@NotaDocu='FACTURA')
         begin
-            set @NotaEstado='EMITIDO'
-            set @NotaSaldo=@NotaPagar
-            set @NotaAcuenta=0
+            -- FACTURA debe comportarse igual que BOLETA:
+            -- - Si es CREDITO => EMITIDO con saldo
+            -- - Si es ALCONTADO => CANCELADO con saldo 0
+            if(@NotaCondicion='CREDITO')
+            begin
+                set @NotaEstado='EMITIDO'
+                set @NotaSaldo=@NotaPagar
+                set @NotaAcuenta=0
+            end
+            else
+            begin
+                set @NotaEstado='CANCELADO'
+                set @NotaSaldo=0
+                set @NotaAcuenta=@NotaPagar
+            end
         end
+        else if(@NotaDocu='PROFORMA')
+            set @NotaEstado='PENDIENTE'
         else
         begin
-            set @NotaEstado='CANCELADO'
-            set @NotaSaldo=0
-            set @NotaAcuenta=@NotaPagar
+            if(@NotaCondicion='CREDITO')
+            begin
+                set @NotaEstado='EMITIDO'
+                set @NotaSaldo=@NotaPagar
+                set @NotaAcuenta=0
+            end
+            else
+            begin
+                set @NotaEstado='CANCELADO'
+                set @NotaSaldo=0
+                set @NotaAcuenta=@NotaPagar
+            end
         end
-    end
 
     Declare @pZ1 int = 0
 

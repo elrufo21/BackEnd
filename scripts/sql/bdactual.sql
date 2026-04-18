@@ -13284,10 +13284,25 @@ begin
 -- begin
 -- =============================================
 
-                        
-if(@NotaDocu='FACTURA')set @NotaEstado='PENDIENTE'                                  
+if(@NotaDocu='FACTURA')                                  
+begin                                  
+   -- FACTURA debe comportarse igual que BOLETA:
+   -- Si es CREDITO => EMITIDO con saldo
+   -- Si es ALCONTADO => CANCELADO con saldo 0
+   if(@NotaCondicion='CREDITO')                        
+   BEGIN                        
+   set @NotaEstado='EMITIDO'                                  
+   set @NotaSaldo=@NotaPagar                                  
+   set @NotaAcuenta=0                        
+   END                        
+   ELSE                        
+   BEGIN                                 
+   set @NotaEstado='CANCELADO'                                  
+   set @NotaSaldo=0                                 
+   set @NotaAcuenta=@NotaPagar                        
+   END                                 
+end
 else if(@NotaDocu='PROFORMA')set @NotaEstado='PENDIENTE'                                  
-                        
 else                                  
 begin                            
    if(@NotaCondicion='CREDITO')                        

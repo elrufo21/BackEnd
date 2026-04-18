@@ -34,6 +34,44 @@ public class CompaniaController : ControllerBase
     }
 
     [Authorize]
+    [HttpPatch("{id}/boleta-por-lote", Name = "ActualizarEnvioBoletaPorLote")]
+    [ProducesResponseType((int)HttpStatusCode.OK)]
+    [ProducesResponseType((int)HttpStatusCode.BadRequest)]
+    [ProducesResponseType((int)HttpStatusCode.NotFound)]
+    public async Task<IActionResult> ActualizarEnvioBoletaPorLote(
+        int id,
+        [FromBody] ActualizarBoletaPorLoteRequest? request,
+        CancellationToken cancellationToken)
+    {
+        if (id <= 0)
+        {
+            return BadRequest("Id inválido.");
+        }
+
+        if (request is null)
+        {
+            return BadRequest("Payload requerido.");
+        }
+
+        var actualizado = await _mediator.ActualizarBoletaPorLoteAsync(id, request.BoletaPorLote, cancellationToken);
+        if (!actualizado)
+        {
+            return NotFound(new
+            {
+                ok = false,
+                mensaje = $"No se encontró la compañía con id {id}."
+            });
+        }
+
+        return Ok(new
+        {
+            ok = true,
+            companiaId = id,
+            boletaPorLote = request.BoletaPorLote
+        });
+    }
+
+    [Authorize]
     [HttpDelete("{id}", Name = "EliminarCompania")]
     [ProducesResponseType((int)HttpStatusCode.OK)]
     public async Task<IActionResult> EliminarCompania(int id, CancellationToken cancellationToken)
@@ -62,4 +100,9 @@ public class CompaniaController : ControllerBase
     {
         return Ok(await _mediator.ListarComboAsync(page, pageSize, cancellationToken));
     }
+}
+
+public class ActualizarBoletaPorLoteRequest
+{
+    public bool BoletaPorLote { get; set; }
 }

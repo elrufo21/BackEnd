@@ -68,6 +68,7 @@ public class UsuarioRepository : IUsuario
             ClaveCertificado = GetPayloadValue(payload, 15),
             Entorno = GetPayloadValue(payload, 16, "3"),
             CompaniaTelefono = GetPayloadValue(payload, 17),
+            BoletaPorLote = ParseBoolFlag(GetPayloadValue(payload, 18, "1")),
             Token = _authService.CreateTokenA(expiresAtUtc.ToString("O")),
             ExpiresAtUtc = expiresAtUtc,
             ExpiresInSeconds = expiresInSeconds
@@ -77,5 +78,28 @@ public class UsuarioRepository : IUsuario
     private static string? GetPayloadValue(string[] payload, int index, string? fallback = "")
     {
         return payload.Length > index ? payload[index] : fallback;
+    }
+
+    private static bool ParseBoolFlag(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return true;
+        }
+
+        var normalized = value.Trim();
+        if (string.Equals(normalized, "1", StringComparison.Ordinal) ||
+            string.Equals(normalized, "true", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (string.Equals(normalized, "0", StringComparison.Ordinal) ||
+            string.Equals(normalized, "false", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return true;
     }
 }

@@ -42,7 +42,8 @@ public class CompaniaRepository : ICompania
                                 RenovacionSome,
                                 CorreoSGO,
                                 PasswordCorreo,
-                                CorreosAdmin)
+                                CorreosAdmin,
+                                BoletaPorLote)
                               VALUES (
                                 @CompaniaRazonSocial,
                                 @CompaniaRUC,
@@ -68,7 +69,8 @@ public class CompaniaRepository : ICompania
                                 @RenovacionSome,
                                 @CorreoSGO,
                                 @PasswordCorreo,
-                                @CorreosAdmin)";
+                                @CorreosAdmin,
+                                @BoletaPorLote)";
 
         await using var con = new SqlConnection(_connectionString);
         await using var cmd = new SqlCommand(sql, con);
@@ -105,13 +107,31 @@ public class CompaniaRepository : ICompania
                                 RenovacionSome = @RenovacionSome,
                                 CorreoSGO = @CorreoSGO,
                                 PasswordCorreo = @PasswordCorreo,
-                                CorreosAdmin = @CorreosAdmin
+                                CorreosAdmin = @CorreosAdmin,
+                                BoletaPorLote = @BoletaPorLote
                               WHERE CompaniaId = @Id";
 
         await using var con = new SqlConnection(_connectionString);
         await using var cmd = new SqlCommand(sql, con);
         cmd.Parameters.AddWithValue("@Id", id);
         AddParameters(cmd, compania);
+        await con.OpenAsync(cancellationToken);
+        var rows = await cmd.ExecuteNonQueryAsync(cancellationToken);
+        return rows > 0;
+    }
+
+    public async Task<bool> ActualizarBoletaPorLoteAsync(int id, bool boletaPorLote, CancellationToken cancellationToken = default)
+    {
+        const string sql = """
+            UPDATE Compania
+            SET BoletaPorLote = @BoletaPorLote
+            WHERE CompaniaId = @Id;
+            """;
+
+        await using var con = new SqlConnection(_connectionString);
+        await using var cmd = new SqlCommand(sql, con);
+        cmd.Parameters.AddWithValue("@Id", id);
+        cmd.Parameters.AddWithValue("@BoletaPorLote", boletaPorLote);
         await con.OpenAsync(cancellationToken);
         var rows = await cmd.ExecuteNonQueryAsync(cancellationToken);
         return rows > 0;
@@ -156,7 +176,8 @@ public class CompaniaRepository : ICompania
                                     RenovacionSome,
                                     CorreoSGO,
                                     PasswordCorreo,
-                                    CorreosAdmin
+                                    CorreosAdmin,
+                                    BoletaPorLote
                              FROM Compania
                              ORDER BY CompaniaId DESC
                              OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;";
@@ -198,7 +219,8 @@ public class CompaniaRepository : ICompania
                 RenovacionSome = reader["RenovacionSome"] == DBNull.Value ? null : Convert.ToDateTime(reader["RenovacionSome"]),
                 CorreoSGO = reader["CorreoSGO"].ToString(),
                 PasswordCorreo = reader["PasswordCorreo"].ToString(),
-                CorreosAdmin = reader["CorreosAdmin"].ToString()
+                CorreosAdmin = reader["CorreosAdmin"].ToString(),
+                BoletaPorLote = reader["BoletaPorLote"] != DBNull.Value && Convert.ToBoolean(reader["BoletaPorLote"])
             });
         }
 
@@ -272,6 +294,7 @@ public class CompaniaRepository : ICompania
         cmd.Parameters.AddWithValue("@CorreoSGO", (object?)compania.CorreoSGO ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@PasswordCorreo", (object?)compania.PasswordCorreo ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@CorreosAdmin", (object?)compania.CorreosAdmin ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@BoletaPorLote", compania.BoletaPorLote);
     }
 
     private static (int page, int pageSize) NormalizePagination(int page, int pageSize)

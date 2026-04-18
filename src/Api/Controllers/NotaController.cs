@@ -32,8 +32,13 @@ public class NotaController : ControllerBase
     }
 
     private const long MaxCertificateSizeBytes = 2 * 1024 * 1024; // 2 MB
+    private const decimal PorcentajeIgvDefault = 18m;
+    private const int DecimalesSunatPrecioUnitario = 10;
+    private const int DecimalesSunatMonto = 2;
     private const string CodigoSunatFacturaFallback = "50161509";
+    private const string CodigoSunatBoletaFallback = "50161509";
     private const string CodigoSunatNotaCreditoFallback = "01010101";
+    private const string DocuConceptoNotaCreditoDefault = "ANULACION DE LA OPERACION";
     private const string MensajeTicketNoGenerado = "NO SE GENERO EL TICKET DE SUNAT,SE RETORNARAN LAS BOLETAS...FAVOR DE ENVIARLO DENUEVO EN UNOS MINUTOS";
     private static readonly HashSet<string> AllowedCertificateExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -166,6 +171,49 @@ public class NotaController : ControllerBase
     }
 
     [AllowAnonymous]
+    [HttpGet("ld-documentos", Name = "GetLdDocumentos")]
+    [ProducesResponseType(typeof(string), (int)HttpStatusCode.OK)]
+    [ProducesResponseType((int)HttpStatusCode.BadRequest)]
+    public async Task<IActionResult> ListarLdDocumentos(
+        [FromQuery] DateTime? fechaInicio,
+        [FromQuery] DateTime? fechaFin,
+        CancellationToken cancellationToken)
+    {
+        if (!fechaInicio.HasValue || !fechaFin.HasValue)
+        {
+            return BadRequest("Debe enviar ambos parámetros: fechaInicio y fechaFin.");
+        }
+
+        if (fechaInicio.Value.Date > fechaFin.Value.Date)
+        {
+            return BadRequest("fechaInicio no puede ser mayor a fechaFin.");
+        }
+
+        var resultado = await _mediator.ListarLdDocumentosRangoAsync(fechaInicio.Value.Date, fechaFin.Value.Date, cancellationToken);
+        return Content(resultado, "text/plain");
+    }
+
+    [AllowAnonymous]
+    [HttpPost("ld-documentos", Name = "GetLdDocumentosLegacy")]
+    [ProducesResponseType(typeof(string), (int)HttpStatusCode.OK)]
+    [ProducesResponseType((int)HttpStatusCode.BadRequest)]
+    public async Task<IActionResult> ListarLdDocumentosLegacy([FromBody] LdDocumentosLegacyRequest? request, CancellationToken cancellationToken)
+    {
+        if (request is null || string.IsNullOrWhiteSpace(request.Data))
+        {
+            return BadRequest("Data es requerido en formato MM/dd/yyyy|MM/dd/yyyy.");
+        }
+
+        if (!TryObtenerRangoDesdeData(request.Data, out var fechaInicio, out var fechaFin, out var error))
+        {
+            return BadRequest(error);
+        }
+
+        var resultado = await _mediator.ListarLdDocumentosRangoAsync(fechaInicio, fechaFin, cancellationToken);
+        return Content(resultado, "text/plain");
+    }
+
+    [AllowAnonymous]
     [HttpPost("lista-bajas", Name = "GetListaBajas")]
     [ProducesResponseType(typeof(string), (int)HttpStatusCode.OK)]
     public async Task<IActionResult> ListarBajas([FromBody] ListaBajasRequest request, CancellationToken cancellationToken)
@@ -213,6 +261,128 @@ public class NotaController : ControllerBase
             ok = string.Equals(resultado, "true", StringComparison.OrdinalIgnoreCase),
             resultado
         });
+    }
+
+    [AllowAnonymous]
+    [HttpPost("boleta/anular-individual", Name = "AnularBoletaIndividualConNotaCredito")]
+    [ProducesResponseType((int)HttpStatusCode.OK)]
+    [ProducesResponseType((int)HttpStatusCode.BadRequest)]
+    [ProducesResponseType((int)HttpStatusCode.NotFound)]
+    [ProducesResponseType((int)HttpStatusCode.Conflict)]
+    public async Task<IActionResult> AnularBoletaIndividualConNotaCredito(
+        [FromBody] AnularBoletaIndividualRequest? request,
+        CancellationToken cancellationToken)
+    {
+        var boletaSolicitada = string.Empty;
+        if (request is null)
+        {
+            return BadRequest(new
+            {
+                ok = false,
+                mensaje = "Payload requerido."
+            });
+        }
+
+        if ((!request.DOCU_ID.HasValue || request.DOCU_ID.Value <= 0) &&
+            string.IsNullOrWhiteSpace(request.NRO_DOCUMENTO_MODIFICA))
+        {
+            return BadRequest(new
+            {
+                ok = false,
+                mensaje = "Debe enviar DOCU_ID o NRO_DOCUMENTO_MODIFICA para identificar la boleta."
+            });
+        }
+        boletaSolicitada = (request.NRO_DOCUMENTO_MODIFICA ?? string.Empty).Trim();
+
+        var (requestNc, statusCode, mensajePreparacion) = await ConstruirRequestAnulacionBoletaIndividualAsync(request, cancellationToken);
+        if (requestNc is null)
+        {
+            return StatusCode(statusCode, new
+            {
+                ok = false,
+                mensaje = mensajePreparacion
+            });
+        }
+
+        requestNc = NormalizarRequestNotaCredito(requestNc);
+        var errores = ValidarRequestNotaCredito(requestNc);
+        if (errores.Count > 0)
+        {
+            return BadRequest(new
+            {
+                ok = false,
+                mensaje = "No se pudo construir una nota de crédito válida para anular la boleta.",
+                errores
+            });
+        }
+
+        var tipoProceso = ParseTipoProceso(requestNc.TIPO_PROCESO);
+        if (!tipoProceso.HasValue || tipoProceso.Value < 1 || tipoProceso.Value > 3)
+        {
+            return BadRequest(new
+            {
+                ok = false,
+                mensaje = "TIPO_PROCESO inválido para enviar la nota de crédito.",
+                errores = new[] { "TIPO_PROCESO debe ser 1 (producción), 2 (homologación) o 3 (beta)." }
+            });
+        }
+
+        try
+        {
+            var respuestaSunat = await EjecutarEnvioNotaCreditoAsync(requestNc, tipoProceso.Value, cancellationToken);
+            var aceptado = string.Equals(
+                ObtenerValorNormalizadoRespuesta(respuestaSunat, "aceptado"),
+                "true",
+                StringComparison.OrdinalIgnoreCase);
+            var codSunat = ObtenerValorNormalizadoRespuesta(respuestaSunat, "cod_sunat");
+
+            if (!aceptado)
+            {
+                var mensaje = codSunat == "2116"
+                    ? "SUNAT/OSE rechazó la NC porque para esta boleta exige referencia por TICKET (tipo 12), no por documento 03."
+                    : "SUNAT/OSE rechazó la nota de crédito.";
+
+                return StatusCode((int)HttpStatusCode.Conflict, new
+                {
+                    ok = false,
+                    mensaje,
+                    docu_id_boleta = requestNc.DOCU_ID,
+                    boleta = boletaSolicitada,
+                    nota_credito = requestNc.NRO_COMPROBANTE,
+                    tipo_comprobante_modifica = requestNc.TIPO_COMPROBANTE_MODIFICA,
+                    referencia_modifica = requestNc.NRO_DOCUMENTO_MODIFICA,
+                    cod_sunat = codSunat,
+                    msj_sunat = ObtenerValorNormalizadoRespuesta(respuestaSunat, "msj_sunat"),
+                    sunat = respuestaSunat
+                });
+            }
+
+            return Ok(new
+            {
+                ok = true,
+                mensaje = "Se generó y envió la nota de crédito para anular la boleta individual.",
+                docu_id_boleta = requestNc.DOCU_ID,
+                boleta = boletaSolicitada,
+                nota_credito = requestNc.NRO_COMPROBANTE,
+                tipo_comprobante_modifica = requestNc.TIPO_COMPROBANTE_MODIFICA,
+                referencia_modifica = requestNc.NRO_DOCUMENTO_MODIFICA,
+                sunat = respuestaSunat
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(
+                ex,
+                "Error al anular boleta individual via NC. DOCU_ID={DocuId}, NRO_DOCUMENTO_MODIFICA={NroDocumentoModifica}",
+                requestNc.DOCU_ID,
+                requestNc.NRO_DOCUMENTO_MODIFICA);
+
+            return StatusCode((int)HttpStatusCode.InternalServerError, new
+            {
+                ok = false,
+                mensaje = $"Error al anular la boleta vía nota de crédito: {ex.Message}"
+            });
+        }
     }
 
     [AllowAnonymous]
@@ -694,6 +864,28 @@ public class NotaController : ControllerBase
             });
         }
 
+        var documentosActualizados = await _mediator.ActualizarRespuestaSunatDocumentoVentaPorResumenAsync(
+            resumenIdLong,
+            codSunatDb,
+            msjSunatDb,
+            hashCdrDb,
+            cancellationToken);
+
+        if (documentosActualizados <= 0)
+        {
+            return StatusCode((int)HttpStatusCode.InternalServerError, new
+            {
+                ok = false,
+                accion = "actualizar_documentoventa_error",
+                mensaje = "No se pudo actualizar CodigoSunat/MensajeSunat en DocumentoVenta para el lote consultado.",
+                cod_sunat = codSunat,
+                msj_sunat = msjSunat,
+                hash_cdr = hashCdr,
+                cdr_recibido = !string.IsNullOrWhiteSpace(cdrBase64Db),
+                cdr_base64 = cdrBase64Db
+            });
+        }
+
         var cdrBase64GuardadoBd = await _mediator.ObtenerCdrBase64ResumenAsync(resumenIdLong, cancellationToken);
         var cdrBase64Respuesta = string.IsNullOrWhiteSpace(cdrBase64GuardadoBd) ? cdrBase64Db : cdrBase64GuardadoBd;
         var cdrRecibido = !string.IsNullOrWhiteSpace(cdrBase64Respuesta);
@@ -722,6 +914,7 @@ public class NotaController : ControllerBase
                 msj_sunat = msjSunat,
                 hash_cdr = hashCdr,
                 hash_cpe = hashCpe,
+                documentos_actualizados = documentosActualizados,
                 cdr_recibido = cdrRecibido,
                 cdr_base64 = cdrBase64Respuesta,
                 requiere_reenvio = true
@@ -743,6 +936,7 @@ public class NotaController : ControllerBase
                 msj_sunat = msjSunat,
                 hash_cdr = hashCdr,
                 hash_cpe = hashCpe,
+                documentos_actualizados = documentosActualizados,
                 cdr_recibido = cdrRecibido,
                 cdr_base64 = cdrBase64Respuesta
             });
@@ -757,6 +951,7 @@ public class NotaController : ControllerBase
             msj_sunat = msjSunat,
             hash_cdr = hashCdr,
             hash_cpe = hashCpe,
+            documentos_actualizados = documentosActualizados,
             cdr_recibido = cdrRecibido,
             cdr_base64 = cdrBase64Respuesta
         });
@@ -811,6 +1006,58 @@ public class NotaController : ControllerBase
             return StatusCode((int)HttpStatusCode.InternalServerError, NormalizarRespuestaFactura(
                 null,
                 $"Error al enviar factura: {ex.Message}"));
+        }
+    }
+
+    [AllowAnonymous]
+    [HttpPost("boleta/enviar", Name = "EnviarBoletaElectronica")]
+    [ProducesResponseType((int)HttpStatusCode.OK)]
+    [ProducesResponseType((int)HttpStatusCode.BadRequest)]
+    [ProducesResponseType((int)HttpStatusCode.InternalServerError)]
+    public async Task<IActionResult> EnviarBoletaElectronica([FromBody] EnviarFacturaRequest? request, CancellationToken cancellationToken)
+    {
+        if (request is null)
+        {
+            return BadRequest(new
+            {
+                ok = false,
+                mensaje = "Payload requerido.",
+                errores = new[] { "El body del request es obligatorio." }
+            });
+        }
+
+        var requestBoleta = NormalizarRequestBoleta(request);
+        var errores = ValidarRequestBoleta(requestBoleta);
+        if (errores.Count > 0)
+        {
+            return BadRequest(new
+            {
+                ok = false,
+                mensaje = "Existen campos obligatorios faltantes o inválidos para enviar la boleta.",
+                errores
+            });
+        }
+
+        var tipoProceso = ParseTipoProceso(requestBoleta.TIPO_PROCESO);
+        if (!tipoProceso.HasValue || tipoProceso.Value < 1 || tipoProceso.Value > 3)
+        {
+            return BadRequest(new
+            {
+                ok = false,
+                mensaje = "TIPO_PROCESO inválido.",
+                errores = new[] { "TIPO_PROCESO debe ser 1 (producción), 2 (homologación) o 3 (beta)." }
+            });
+        }
+
+        try
+        {
+            return Ok(await EjecutarEnvioBoletaAsync(requestBoleta, tipoProceso.Value, cancellationToken));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode((int)HttpStatusCode.InternalServerError, NormalizarRespuestaFactura(
+                null,
+                $"Error al enviar boleta: {ex.Message}"));
         }
     }
 
@@ -1011,11 +1258,28 @@ public class NotaController : ControllerBase
                 return BadRequest("NotaPedido requerida.");
             }
             var detalles = request.Detalles ?? new List<DetalleNota>();
-            var vdataNota = BuildOrdenPayload(request.Nota, detalles);
+            AplicarReglaTributariaDocumento(request.Nota, detalles);
+            var clienteDocumento = await ObtenerDatosClienteDocumentoConFallbackAsync(request.Nota.ClienteId, cancellationToken);
+            var vdataNota = BuildOrdenPayload(request.Nota, detalles, clienteDocumento);
             var resultado = await _mediator.RegistrarOrdenAsync(vdataNota, cancellationToken);
             if (EsFactura(request.Nota.NotaDocu))
             {
                 var respuestaSunat = await IntentarEmitirFacturaDesdeOrdenAsync(request.Nota, detalles, resultado, cancellationToken);
+                return Ok(new
+                {
+                    resultado,
+                    cod_sunat = ObtenerValorNormalizadoRespuesta(respuestaSunat, "cod_sunat"),
+                    msj_sunat = ObtenerValorNormalizadoRespuesta(respuestaSunat, "msj_sunat"),
+                    aceptado = ObtenerValorNormalizadoRespuesta(respuestaSunat, "aceptado"),
+                    hash_cdr = ObtenerValorNormalizadoRespuesta(respuestaSunat, "hash_cdr"),
+                    cdr_recibido = ObtenerValorNormalizadoRespuesta(respuestaSunat, "cdr_recibido"),
+                    cdr_base64 = ObtenerValorNormalizadoRespuesta(respuestaSunat, "cdr_base64"),
+                    sunat = respuestaSunat
+                });
+            }
+            if (EsBoleta(request.Nota.NotaDocu))
+            {
+                var respuestaSunat = await IntentarEmitirBoletaDesdeOrdenAsync(request.Nota, detalles, resultado, cancellationToken);
                 return Ok(new
                 {
                     resultado,
@@ -1064,11 +1328,28 @@ public class NotaController : ControllerBase
                 return BadRequest("NotaPedido requerida.");
             }
             var detalles = request.Detalles ?? new List<DetalleNota>();
-            var vdataNota = BuildOrdenPayload(request.Nota, detalles);
+            AplicarReglaTributariaDocumento(request.Nota, detalles);
+            var clienteDocumento = await ObtenerDatosClienteDocumentoConFallbackAsync(request.Nota.ClienteId, cancellationToken);
+            var vdataNota = BuildOrdenPayload(request.Nota, detalles, clienteDocumento);
             var resultado = await _mediator.RegistrarOrdenAsync(vdataNota, cancellationToken);
             if (EsFactura(request.Nota.NotaDocu))
             {
                 var respuestaSunat = await IntentarEmitirFacturaDesdeOrdenAsync(request.Nota, detalles, resultado, cancellationToken);
+                return Ok(new
+                {
+                    resultado,
+                    cod_sunat = ObtenerValorNormalizadoRespuesta(respuestaSunat, "cod_sunat"),
+                    msj_sunat = ObtenerValorNormalizadoRespuesta(respuestaSunat, "msj_sunat"),
+                    aceptado = ObtenerValorNormalizadoRespuesta(respuestaSunat, "aceptado"),
+                    hash_cdr = ObtenerValorNormalizadoRespuesta(respuestaSunat, "hash_cdr"),
+                    cdr_recibido = ObtenerValorNormalizadoRespuesta(respuestaSunat, "cdr_recibido"),
+                    cdr_base64 = ObtenerValorNormalizadoRespuesta(respuestaSunat, "cdr_base64"),
+                    sunat = respuestaSunat
+                });
+            }
+            if (EsBoleta(request.Nota.NotaDocu))
+            {
+                var respuestaSunat = await IntentarEmitirBoletaDesdeOrdenAsync(request.Nota, detalles, resultado, cancellationToken);
                 return Ok(new
                 {
                     resultado,
@@ -1109,20 +1390,31 @@ public class NotaController : ControllerBase
                 return BadRequest("NotaPedido requerida.");
             }
             var detalles = request.Detalles ?? new List<DetalleNota>();
+            AplicarReglaTributariaDocumento(request.Nota, detalles);
             var vdataNota = BuildEditarPayload(request.Nota, detalles);
-            return Ok(await _mediator.EditarOrdenAsync(vdataNota, cancellationToken));
+            var resultado = await _mediator.EditarOrdenAsync(vdataNota, cancellationToken);
+            if (EsResultadoEdicionExitosa(resultado))
+            {
+                await ActualizarTributacionPostEdicionAsync(request.Nota, detalles, cancellationToken);
+            }
+            return Ok(resultado);
         }
 
         var vdata = BuildEditarPayload(body);
         return Ok(await _mediator.EditarOrdenAsync(vdata, cancellationToken));
     }
 
-    private string BuildOrdenPayload(NotaPedido nota, IEnumerable<DetalleNota> detalles)
+    private string BuildOrdenPayload(NotaPedido nota, IEnumerable<DetalleNota> detalles, ClienteDocumentoInfo? clienteDocumento = null)
     {
         var detalleList = detalles == null ? new List<DetalleNota>() : new List<DetalleNota>(detalles);
+        var xDocumento = string.IsNullOrWhiteSpace(nota.NotaDocu) ? "BOLETA" : nota.NotaDocu!;
+        var icbper = nota.ICBPER ?? 0m;
+        var totalDetalle = detalleList.Sum(x => x.DetalleImporte ?? 0m);
+        var total = nota.NotaTotal ?? (totalDetalle + icbper);
+        var calculoTributario = CalcularTributacionDocumento(xDocumento, total, icbper);
+        var subtotal = calculoTributario.SubTotal;
+        var igv = calculoTributario.Igv;
 
-        var total = nota.NotaTotal ?? 0m;
-        var subtotal = nota.NotaSubtotal ?? 0m;
         var movilidad = nota.NotaMovilidad ?? 0m;
         var descuento = nota.NotaDescuento ?? 0m;
         var acuenta = nota.NotaAcuenta ?? 0m;
@@ -1131,30 +1423,44 @@ public class NotaController : ControllerBase
         var tarjeta = nota.NotaTarjeta ?? 0m;
         var pagar = nota.NotaPagar ?? total;
         var ganancia = nota.NotaGanancia ?? 0m;
-        var icbper = nota.ICBPER ?? 0m;
-        var igv = total - subtotal;
-
-        var xDocumento = string.IsNullOrWhiteSpace(nota.NotaDocu) ? "BOLETA" : nota.NotaDocu!;
         var xserie = nota.NotaSerie ?? string.Empty;
         var numero = nota.NotaNumero ?? string.Empty;
         // Defaults for uspinsertarNotaB fields not present in NotaPedido payloads
         var docuAdicional = 0m;
         var docuHash = string.Empty;
         var estadoSunat = "PENDIENTE";
-        var docuSubtotal = subtotal;
-        var docuIgv = igv;
+        var docuSubtotal = calculoTributario.SubTotal;
+        var docuIgv = calculoTributario.Igv;
         var usuarioId = "7";
-        var docuGravada = subtotal;
+        var docuGravada = calculoTributario.Gravada;
         var docuDescuento = 0m;
         var notaIdbr = nota.NotaId > 0 ? nota.NotaId.ToString() : "0";
         var entidadBancaria = nota.EntidadBancaria ?? "-";
         var nroOperacion = nota.NroOperacion ?? string.Empty;
         var efectivo = nota.Efectivo ?? pagar;
         var deposito = nota.Deposito ?? 0m;
-        var clienteRazon = string.Empty;
-        var clienteRuc = string.Empty;
-        var clienteDni = string.Empty;
-        var direccionFiscal = string.Empty;
+        var esBoleta = string.Equals(xDocumento, "BOLETA", StringComparison.OrdinalIgnoreCase);
+        var clienteRazon = clienteDocumento?.ClienteRazon ?? string.Empty;
+        var clienteRuc = clienteDocumento?.ClienteRuc ?? string.Empty;
+        var clienteDni = clienteDocumento?.ClienteDni ?? string.Empty;
+        var direccionFiscal = !string.IsNullOrWhiteSpace(clienteDocumento?.DireccionFiscal)
+            ? clienteDocumento!.DireccionFiscal
+            : (nota.NotaDireccion ?? string.Empty);
+
+        if (string.IsNullOrWhiteSpace(clienteRazon))
+        {
+            clienteRazon = "VARIOS";
+        }
+
+        if (esBoleta && string.IsNullOrWhiteSpace(clienteRuc) && string.IsNullOrWhiteSpace(clienteDni))
+        {
+            clienteDni = "00000000";
+        }
+
+        if (string.IsNullOrWhiteSpace(direccionFiscal))
+        {
+            direccionFiscal = "-";
+        }
 
         var headerFields = new List<string?>
         {
@@ -1228,6 +1534,77 @@ public class NotaController : ControllerBase
         return vdata;
     }
 
+    private async Task<ClienteDocumentoInfo?> ObtenerDatosClienteDocumentoAsync(long? clienteId, CancellationToken cancellationToken)
+    {
+        if (!clienteId.HasValue || clienteId.Value <= 0)
+        {
+            return null;
+        }
+
+        var connectionString = _configuration.GetConnectionString("DefaultConnection");
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            return null;
+        }
+
+        const string sql = """
+            SELECT TOP (1)
+                ClienteRazon,
+                ClienteRuc,
+                ClienteDni,
+                ClienteDireccion
+            FROM Cliente
+            WHERE ClienteId = @ClienteId;
+            """;
+
+        await using var con = new SqlConnection(connectionString);
+        await using var cmd = new SqlCommand(sql, con);
+        cmd.Parameters.AddWithValue("@ClienteId", clienteId.Value);
+
+        await con.OpenAsync(cancellationToken);
+        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken))
+        {
+            return null;
+        }
+
+        return new ClienteDocumentoInfo
+        {
+            ClienteRazon = reader["ClienteRazon"]?.ToString()?.Trim() ?? string.Empty,
+            ClienteRuc = reader["ClienteRuc"]?.ToString()?.Trim() ?? string.Empty,
+            ClienteDni = reader["ClienteDni"]?.ToString()?.Trim() ?? string.Empty,
+            DireccionFiscal = reader["ClienteDireccion"]?.ToString()?.Trim() ?? string.Empty
+        };
+    }
+
+    private async Task<ClienteDocumentoInfo?> ObtenerDatosClienteDocumentoConFallbackAsync(long? clienteId, CancellationToken cancellationToken)
+    {
+        var cliente = await ObtenerDatosClienteDocumentoAsync(clienteId, cancellationToken);
+        var necesitaFallback = cliente is null ||
+                               string.IsNullOrWhiteSpace(cliente.ClienteRazon) ||
+                               string.IsNullOrWhiteSpace(cliente.DireccionFiscal) ||
+                               (string.IsNullOrWhiteSpace(cliente.ClienteRuc) && string.IsNullOrWhiteSpace(cliente.ClienteDni));
+
+        if (!necesitaFallback)
+        {
+            return cliente;
+        }
+
+        var clienteGenerico = await ObtenerDatosClienteDocumentoAsync(1, cancellationToken);
+        if (clienteGenerico is null)
+        {
+            return cliente;
+        }
+
+        return new ClienteDocumentoInfo
+        {
+            ClienteRazon = !string.IsNullOrWhiteSpace(cliente?.ClienteRazon) ? cliente.ClienteRazon : clienteGenerico.ClienteRazon,
+            ClienteRuc = !string.IsNullOrWhiteSpace(cliente?.ClienteRuc) ? cliente.ClienteRuc : clienteGenerico.ClienteRuc,
+            ClienteDni = !string.IsNullOrWhiteSpace(cliente?.ClienteDni) ? cliente.ClienteDni : clienteGenerico.ClienteDni,
+            DireccionFiscal = !string.IsNullOrWhiteSpace(cliente?.DireccionFiscal) ? cliente.DireccionFiscal : clienteGenerico.DireccionFiscal
+        };
+    }
+
     private string BuildEditarPayload(NotaPedido nota, IEnumerable<DetalleNota> detalles)
     {
         var detalleList = detalles == null ? new List<DetalleNota>() : new List<DetalleNota>(detalles);
@@ -1282,10 +1659,21 @@ public class NotaController : ControllerBase
         var condicion = GetFirstString(res, "Condicion", "NotaCondicion");
         var direccion = GetFirstString(res, "Direccion", "NotaDireccion");
         var telefono = GetFirstString(res, "Telefono", "NotaTelefono");
-        var subtotal = GetFirstDecimal(res, 0m, "SubTotal", "NotaSubtotal", "DocuSubtotal");
+        var icbper = GetFirstDecimal(res, 0m, "ICBPER");
+        var subtotalInformativo = GetFirstDecimal(res, 0m, "SubTotal", "NotaSubtotal", "DocuSubtotal");
         var movilidad = GetFirstDecimal(res, 0m, "Movilidad", "NotaMovilidad");
         var descuento = GetFirstDecimal(res, 0m, "Descuento", "NotaDescuento", "DocuDescuento");
         var total = GetFirstDecimal(res, 0m, "Total", "NotaTotal");
+        if (total <= 0m)
+        {
+            total = SumarImporteDetalleJson(productoArray, producto) + icbper;
+            if (total <= 0m && subtotalInformativo > 0m)
+            {
+                total = subtotalInformativo + icbper;
+            }
+        }
+        var calculoTributario = CalcularTributacionDocumento(docu, total, icbper);
+        var subtotal = calculoTributario.SubTotal;
         var acuenta = GetFirstDecimal(res, 0m, "Acuenta", "NotaAcuenta");
         var saldo = GetFirstDecimal(res, 0m, "Saldo", "NotaSaldo");
         var adicional = GetFirstDecimal(res, 0m, "Adicional", "NotaAdicional", "DocuAdicional");
@@ -1304,11 +1692,10 @@ public class NotaController : ControllerBase
         var docuHash = GetFirstString(res, "DocuHash", "Hash");
         var estadoSunat = GetFirstString(res, "EstadoSunat");
         if (string.IsNullOrWhiteSpace(estadoSunat)) estadoSunat = "PENDIENTE";
-        var docuSubtotal = GetFirstDecimal(res, subtotal, "DocuSubtotal", "DocuSubTotal");
-        var igv = GetFirstDecimal(res, total - subtotal, "IGV", "DocuIGV");
+        var docuSubtotal = calculoTributario.SubTotal;
+        var igv = calculoTributario.Igv;
         var usuarioId = GetFirstString(res, "UsuarioId");
-        var icbper = GetFirstDecimal(res, 0m, "ICBPER");
-        var docuGravada = GetFirstDecimal(res, subtotal, "DocuGravada");
+        var docuGravada = calculoTributario.Gravada;
         var docuDescuento = GetFirstDecimal(res, 0m, "DocuDescuento");
         var notaIdbr = GetFirstString(res, "NotaIDBR", "NotaIdbr", "IDBR");
         if (string.IsNullOrWhiteSpace(notaIdbr)) notaIdbr = "0";
@@ -1490,12 +1877,17 @@ public class NotaController : ControllerBase
 
     private static string Format2(decimal value)
     {
-        return value.ToString("0.##", CultureInfo.InvariantCulture);
+        return FormatDecimalSinRedondeo(value);
     }
 
     private static string Format4(decimal value)
     {
-        return value.ToString("0.####", CultureInfo.InvariantCulture);
+        return FormatDecimalSinRedondeo(value);
+    }
+
+    private static string FormatDecimalSinRedondeo(decimal value)
+    {
+        return value.ToString("0.#############################", CultureInfo.InvariantCulture);
     }
 
     private static string FormatDateForSql(DateTime? value)
@@ -1862,9 +2254,91 @@ public class NotaController : ControllerBase
                 errores.Add($"detalle[{i}].precio es requerido y debe ser mayor o igual a 0.");
             }
 
-            if (!item.precioSinImpuesto.HasValue || item.precioSinImpuesto < 0)
+            AgregarErrorSiVacio(errores, item.descripcion, $"detalle[{i}].descripcion es requerido.");
+            AgregarErrorSiVacio(errores, item.codTipoOperacion, $"detalle[{i}].codTipoOperacion es requerido.");
+        }
+
+        return errores;
+    }
+
+    private static List<string> ValidarRequestBoleta(EnviarFacturaRequest request)
+    {
+        var errores = new List<string>();
+
+        if (!string.Equals((request.COD_TIPO_DOCUMENTO ?? string.Empty).Trim(), "03", StringComparison.Ordinal))
+        {
+            errores.Add("COD_TIPO_DOCUMENTO debe ser '03' para este endpoint.");
+        }
+
+        AgregarErrorSiVacio(errores, request.NRO_DOCUMENTO_EMPRESA, "NRO_DOCUMENTO_EMPRESA es requerido.");
+        AgregarErrorSiVacio(errores, request.TIPO_DOCUMENTO_EMPRESA, "TIPO_DOCUMENTO_EMPRESA es requerido.");
+        AgregarErrorSiVacio(errores, request.RAZON_SOCIAL_EMPRESA, "RAZON_SOCIAL_EMPRESA es requerido.");
+        AgregarErrorSiVacio(errores, request.CODIGO_UBIGEO_EMPRESA, "CODIGO_UBIGEO_EMPRESA es requerido.");
+        AgregarErrorSiVacio(errores, request.DIRECCION_EMPRESA, "DIRECCION_EMPRESA es requerido.");
+        AgregarErrorSiVacio(errores, request.DEPARTAMENTO_EMPRESA, "DEPARTAMENTO_EMPRESA es requerido.");
+        AgregarErrorSiVacio(errores, request.PROVINCIA_EMPRESA, "PROVINCIA_EMPRESA es requerido.");
+        AgregarErrorSiVacio(errores, request.DISTRITO_EMPRESA, "DISTRITO_EMPRESA es requerido.");
+        AgregarErrorSiVacio(errores, request.CODIGO_PAIS_EMPRESA, "CODIGO_PAIS_EMPRESA es requerido.");
+        AgregarErrorSiVacio(errores, request.NRO_COMPROBANTE, "NRO_COMPROBANTE es requerido.");
+        AgregarErrorSiVacio(errores, request.FECHA_DOCUMENTO, "FECHA_DOCUMENTO es requerido.");
+        AgregarErrorSiVacio(errores, request.COD_MONEDA, "COD_MONEDA es requerido.");
+        AgregarErrorSiVacio(errores, request.USUARIO_SOL_EMPRESA, "USUARIO_SOL_EMPRESA es requerido.");
+        AgregarErrorSiVacio(errores, request.PASS_SOL_EMPRESA, "PASS_SOL_EMPRESA es requerido.");
+        AgregarErrorSiVacio(errores, request.CONTRA_FIRMA, "CONTRA_FIRMA es requerido.");
+        AgregarErrorSiVacio(errores, request.RUTA_PFX, "RUTA_PFX es requerido.");
+        AgregarErrorSiVacio(errores, request.NRO_DOCUMENTO_CLIENTE, "NRO_DOCUMENTO_CLIENTE es requerido.");
+        AgregarErrorSiVacio(errores, request.TIPO_DOCUMENTO_CLIENTE, "TIPO_DOCUMENTO_CLIENTE es requerido.");
+        AgregarErrorSiVacio(errores, request.RAZON_SOCIAL_CLIENTE, "RAZON_SOCIAL_CLIENTE es requerido.");
+        AgregarErrorSiVacio(errores, request.COD_UBIGEO_CLIENTE, "COD_UBIGEO_CLIENTE es requerido.");
+        AgregarErrorSiVacio(errores, request.DIRECCION_CLIENTE, "DIRECCION_CLIENTE es requerido.");
+        AgregarErrorSiVacio(errores, request.DEPARTAMENTO_CLIENTE, "DEPARTAMENTO_CLIENTE es requerido.");
+        AgregarErrorSiVacio(errores, request.PROVINCIA_CLIENTE, "PROVINCIA_CLIENTE es requerido.");
+        AgregarErrorSiVacio(errores, request.DISTRITO_CLIENTE, "DISTRITO_CLIENTE es requerido.");
+        AgregarErrorSiVacio(errores, request.COD_PAIS_CLIENTE, "COD_PAIS_CLIENTE es requerido.");
+
+        if (!EsFechaIsoValida(request.FECHA_DOCUMENTO))
+        {
+            errores.Add("FECHA_DOCUMENTO debe tener formato yyyy-MM-dd.");
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.FECHA_VTO) && !EsFechaIsoValida(request.FECHA_VTO))
+        {
+            errores.Add("FECHA_VTO debe tener formato yyyy-MM-dd.");
+        }
+
+        if (request.detalle is null || request.detalle.Count == 0)
+        {
+            errores.Add("detalle es requerido y debe contener al menos un elemento.");
+            return errores;
+        }
+
+        for (var i = 0; i < request.detalle.Count; i++)
+        {
+            var item = request.detalle[i];
+            if (item is null)
             {
-                errores.Add($"detalle[{i}].precioSinImpuesto es requerido y debe ser mayor o igual a 0.");
+                errores.Add($"detalle[{i}] no puede ser null.");
+                continue;
+            }
+
+            if (!item.item.HasValue || item.item <= 0)
+            {
+                errores.Add($"detalle[{i}].item es requerido y debe ser mayor a 0.");
+            }
+
+            if (!item.cantidad.HasValue || item.cantidad <= 0)
+            {
+                errores.Add($"detalle[{i}].cantidad es requerido y debe ser mayor a 0.");
+            }
+
+            if (!item.importe.HasValue || item.importe < 0)
+            {
+                errores.Add($"detalle[{i}].importe es requerido y debe ser mayor o igual a 0.");
+            }
+
+            if (!item.precio.HasValue || item.precio < 0)
+            {
+                errores.Add($"detalle[{i}].precio es requerido y debe ser mayor o igual a 0.");
             }
 
             AgregarErrorSiVacio(errores, item.descripcion, $"detalle[{i}].descripcion es requerido.");
@@ -1958,17 +2432,118 @@ public class NotaController : ControllerBase
                 errores.Add($"detalle[{i}].precio es requerido y debe ser mayor o igual a 0.");
             }
 
-            if (!item.precioSinImpuesto.HasValue || item.precioSinImpuesto < 0)
-            {
-                errores.Add($"detalle[{i}].precioSinImpuesto es requerido y debe ser mayor o igual a 0.");
-            }
-
             AgregarErrorSiVacio(errores, item.descripcion, $"detalle[{i}].descripcion es requerido.");
             AgregarErrorSiVacio(errores, item.codigoSunat, $"detalle[{i}].codigoSunat es requerido.");
             AgregarErrorSiVacio(errores, item.codTipoOperacion, $"detalle[{i}].codTipoOperacion es requerido.");
         }
 
         return errores;
+    }
+
+    private static string NormalizarHoraRegistro(string? horaRegistro)
+    {
+        var ahora = ObtenerAhoraCpe().ToString("HH:mm:ss", CultureInfo.InvariantCulture);
+        if (string.IsNullOrWhiteSpace(horaRegistro))
+        {
+            return ahora;
+        }
+
+        var raw = horaRegistro.Trim();
+        if (raw == "0" || raw == "00:00" || raw == "00:00:00" || raw == "0:0:0")
+        {
+            return ahora;
+        }
+
+        if (TryParseHoraSimple(raw, out var horaSimple))
+        {
+            return horaSimple;
+        }
+
+        if (DateTimeOffset.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.AllowWhiteSpaces, out var parsedOffset) ||
+            DateTimeOffset.TryParse(raw, CultureInfo.CurrentCulture, DateTimeStyles.AllowWhiteSpaces, out parsedOffset))
+        {
+            var horaLocal = ConvertirACpe(parsedOffset);
+            if (horaLocal.TimeOfDay == TimeSpan.Zero)
+            {
+                return ahora;
+            }
+
+            return horaLocal.ToString("HH:mm:ss", CultureInfo.InvariantCulture);
+        }
+
+        if (DateTime.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed) ||
+            DateTime.TryParse(raw, CultureInfo.CurrentCulture, DateTimeStyles.None, out parsed))
+        {
+            if (parsed.TimeOfDay == TimeSpan.Zero)
+            {
+                return ahora;
+            }
+
+            return parsed.ToString("HH:mm:ss", CultureInfo.InvariantCulture);
+        }
+
+        return raw;
+    }
+
+    private static string ResolverHoraRegistroDesdeNota(DateTime? notaFechaPago, DateTime? notaFecha)
+    {
+        var fuente = notaFechaPago ?? notaFecha;
+        if (!fuente.HasValue)
+        {
+            return ObtenerAhoraCpe().ToString("HH:mm:ss", CultureInfo.InvariantCulture);
+        }
+
+        var valor = fuente.Value;
+        if (valor.Kind == DateTimeKind.Unspecified)
+        {
+            return valor.ToString("HH:mm:ss", CultureInfo.InvariantCulture);
+        }
+
+        // Preserva offset (por ejemplo Z) para convertir correctamente a hora CPE (Lima).
+        return new DateTimeOffset(valor).ToString("o", CultureInfo.InvariantCulture);
+    }
+
+    private static bool TryParseHoraSimple(string valor, out string horaNormalizada)
+    {
+        horaNormalizada = string.Empty;
+        var formatos = new[] { "H:m", "H:m:s", "HH:mm", "HH:mm:ss" };
+
+        if (DateTime.TryParseExact(valor, formatos, CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed) ||
+            DateTime.TryParseExact(valor, formatos, CultureInfo.CurrentCulture, DateTimeStyles.None, out parsed))
+        {
+            horaNormalizada = parsed.ToString("HH:mm:ss", CultureInfo.InvariantCulture);
+            return true;
+        }
+
+        return false;
+    }
+
+    private static DateTime ObtenerAhoraCpe()
+    {
+        return ConvertirACpe(DateTimeOffset.UtcNow);
+    }
+
+    private static DateTime ConvertirACpe(DateTimeOffset valor)
+    {
+        return TimeZoneInfo.ConvertTime(valor, ResolverZonaHorariaCpe()).DateTime;
+    }
+
+    private static TimeZoneInfo ResolverZonaHorariaCpe()
+    {
+        var zonas = new[] { "SA Pacific Standard Time", "America/Lima" };
+        foreach (var zonaId in zonas)
+        {
+            try
+            {
+                return TimeZoneInfo.FindSystemTimeZoneById(zonaId);
+            }
+            catch
+            {
+                // Continuar con siguiente zona.
+            }
+        }
+
+        return TimeZoneInfo.Local;
     }
 
     private static EnviarFacturaRequest NormalizarRequestFactura(EnviarFacturaRequest request)
@@ -1984,9 +2559,7 @@ public class NotaController : ControllerBase
             ? request.RAZON_SOCIAL_EMPRESA?.Trim()
             : request.NOMBRE_COMERCIAL_EMPRESA.Trim();
         request.CONTACTO_EMPRESA = request.CONTACTO_EMPRESA?.Trim() ?? string.Empty;
-        request.HORA_REGISTRO = string.IsNullOrWhiteSpace(request.HORA_REGISTRO)
-            ? DateTime.Now.ToString("HH:mm:ss", CultureInfo.InvariantCulture)
-            : request.HORA_REGISTRO.Trim();
+        request.HORA_REGISTRO = NormalizarHoraRegistro(request.HORA_REGISTRO);
         request.FORMA_PAGO = NormalizarFormaPago(request.FORMA_PAGO);
         request.FECHA_VTO = string.IsNullOrWhiteSpace(request.FECHA_VTO)
             ? request.FECHA_DOCUMENTO?.Trim()
@@ -2009,34 +2582,90 @@ public class NotaController : ControllerBase
         request.detalle ??= new List<EnviarFacturaDetalleRequest>();
         for (var i = 0; i < request.detalle.Count; i++)
         {
-            request.detalle[i] = NormalizarDetalleFactura(request.detalle[i], i + 1, request.POR_IGV ?? 18m);
+            request.detalle[i] = NormalizarDetalleFactura(request.detalle[i], i + 1);
         }
 
-        request.SUB_TOTAL ??= request.detalle.Sum(x => x.importe ?? 0m);
-        request.TOTAL_IGV ??= request.detalle.Sum(x => x.igv ?? 0m);
+        request.POR_IGV ??= PorcentajeIgvDefault;
         request.TOTAL_ISC ??= request.detalle.Sum(x => x.isc ?? 0m);
         request.TOTAL_ICBPER ??= request.detalle.Sum(x => Convert.ToDecimal(x.impuestoIcbper ?? 0d));
         request.TOTAL_OTR_IMP ??= 0m;
-        request.TOTAL_GRAVADAS ??= request.detalle
-            .Where(x => string.Equals(x.codTipoOperacion, "10", StringComparison.Ordinal))
-            .Sum(x => x.importe ?? 0m);
-        request.TOTAL_EXONERADAS ??= request.detalle
-            .Where(x => string.Equals(x.codTipoOperacion, "20", StringComparison.Ordinal))
-            .Sum(x => x.importe ?? 0m);
-        request.TOTAL_INAFECTA ??= request.detalle
-            .Where(x => string.Equals(x.codTipoOperacion, "30", StringComparison.Ordinal))
-            .Sum(x => x.importe ?? 0m);
-        request.TOTAL_EXPORTACION ??= request.detalle
-            .Where(x => string.Equals(x.codTipoOperacion, "40", StringComparison.Ordinal))
-            .Sum(x => x.importe ?? 0m);
         request.TOTAL_GRATUITAS ??= 0m;
         request.TOTAL_DESCUENTO ??= request.detalle.Sum(x => x.descuento ?? 0m);
-        request.POR_IGV ??= 18m;
-        request.TOTAL ??= (request.SUB_TOTAL ?? 0m)
-            + (request.TOTAL_IGV ?? 0m)
-            + (request.TOTAL_ISC ?? 0m)
-            + (request.TOTAL_ICBPER ?? 0m)
-            + (request.TOTAL_OTR_IMP ?? 0m);
+
+        var totalBrutoDetalle = request.detalle.Sum(x => x.importe ?? 0m);
+        request.TOTAL ??= totalBrutoDetalle + (request.TOTAL_ICBPER ?? 0m);
+
+        AplicarCalculoTributarioParaEnvio(request);
+
+        return request;
+    }
+
+    private static EnviarFacturaRequest NormalizarRequestBoleta(EnviarFacturaRequest request)
+    {
+        request.COD_TIPO_DOCUMENTO = "03";
+        request.TIPO_OPERACION = string.IsNullOrWhiteSpace(request.TIPO_OPERACION) ? "0101" : request.TIPO_OPERACION.Trim();
+        request.COD_MONEDA = string.IsNullOrWhiteSpace(request.COD_MONEDA) ? "PEN" : request.COD_MONEDA.Trim().ToUpperInvariant();
+        request.TIPO_DOCUMENTO_EMPRESA = string.IsNullOrWhiteSpace(request.TIPO_DOCUMENTO_EMPRESA) ? "6" : request.TIPO_DOCUMENTO_EMPRESA.Trim();
+        request.CODIGO_PAIS_EMPRESA = string.IsNullOrWhiteSpace(request.CODIGO_PAIS_EMPRESA) ? "PE" : request.CODIGO_PAIS_EMPRESA.Trim().ToUpperInvariant();
+        request.COD_PAIS_CLIENTE = string.IsNullOrWhiteSpace(request.COD_PAIS_CLIENTE) ? "PE" : request.COD_PAIS_CLIENTE.Trim().ToUpperInvariant();
+        request.CODIGO_ANEXO = string.IsNullOrWhiteSpace(request.CODIGO_ANEXO) ? "0000" : request.CODIGO_ANEXO.Trim();
+        request.NOMBRE_COMERCIAL_EMPRESA = string.IsNullOrWhiteSpace(request.NOMBRE_COMERCIAL_EMPRESA)
+            ? request.RAZON_SOCIAL_EMPRESA?.Trim()
+            : request.NOMBRE_COMERCIAL_EMPRESA.Trim();
+        request.CONTACTO_EMPRESA = request.CONTACTO_EMPRESA?.Trim() ?? string.Empty;
+        request.HORA_REGISTRO = NormalizarHoraRegistro(request.HORA_REGISTRO);
+        request.FORMA_PAGO = NormalizarFormaPago(request.FORMA_PAGO);
+        request.FECHA_VTO = string.IsNullOrWhiteSpace(request.FECHA_VTO)
+            ? request.FECHA_DOCUMENTO?.Trim()
+            : request.FECHA_VTO.Trim();
+        request.CIUDAD_CLIENTE = string.IsNullOrWhiteSpace(request.CIUDAD_CLIENTE)
+            ? request.PROVINCIA_CLIENTE?.Trim()
+            : request.CIUDAD_CLIENTE.Trim();
+        request.TOTAL_LETRAS ??= string.Empty;
+        request.GLOSA ??= string.Empty;
+        request.NRO_GUIA_REMISION ??= string.Empty;
+        request.FECHA_GUIA_REMISION ??= string.Empty;
+        request.COD_GUIA_REMISION = string.IsNullOrWhiteSpace(request.COD_GUIA_REMISION) ? "09" : request.COD_GUIA_REMISION.Trim();
+        request.NRO_OTR_COMPROBANTE ??= string.Empty;
+        request.COD_OTR_COMPROBANTE ??= string.Empty;
+        request.CUENTA_DETRACCION ??= string.Empty;
+        request.MONTO_DETRACCION ??= 0m;
+        request.PORCENTAJE_DES ??= 0m;
+
+        request.detalle ??= new List<EnviarFacturaDetalleRequest>();
+        for (var i = 0; i < request.detalle.Count; i++)
+        {
+            request.detalle[i] = NormalizarDetalleFactura(request.detalle[i], i + 1);
+        }
+
+        request.POR_IGV ??= PorcentajeIgvDefault;
+        request.TOTAL_ISC ??= request.detalle.Sum(x => x.isc ?? 0m);
+        request.TOTAL_ICBPER ??= request.detalle.Sum(x => Convert.ToDecimal(x.impuestoIcbper ?? 0d));
+        request.TOTAL_OTR_IMP ??= 0m;
+        request.TOTAL_GRATUITAS ??= 0m;
+        request.TOTAL_DESCUENTO ??= request.detalle.Sum(x => x.descuento ?? 0m);
+
+        var totalBrutoDetalle = request.detalle.Sum(x => x.importe ?? 0m);
+        request.TOTAL ??= totalBrutoDetalle + (request.TOTAL_ICBPER ?? 0m);
+
+        AplicarCalculoTributarioParaEnvio(request);
+
+        var nroDocCliente = (request.NRO_DOCUMENTO_CLIENTE ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(nroDocCliente))
+        {
+            nroDocCliente = "00000000";
+        }
+
+        request.NRO_DOCUMENTO_CLIENTE = nroDocCliente;
+        request.TIPO_DOCUMENTO_CLIENTE = InferirTipoDocumentoCliente(request.TIPO_DOCUMENTO_CLIENTE, nroDocCliente);
+        if (string.IsNullOrWhiteSpace(request.TIPO_DOCUMENTO_CLIENTE))
+        {
+            request.TIPO_DOCUMENTO_CLIENTE = "1";
+        }
+
+        request.RAZON_SOCIAL_CLIENTE = string.IsNullOrWhiteSpace(request.RAZON_SOCIAL_CLIENTE)
+            ? "VARIOS"
+            : request.RAZON_SOCIAL_CLIENTE.Trim();
 
         return request;
     }
@@ -2054,9 +2683,7 @@ public class NotaController : ControllerBase
             ? request.RAZON_SOCIAL_EMPRESA?.Trim()
             : request.NOMBRE_COMERCIAL_EMPRESA.Trim();
         request.CONTACTO_EMPRESA = request.CONTACTO_EMPRESA?.Trim() ?? string.Empty;
-        request.HORA_REGISTRO = string.IsNullOrWhiteSpace(request.HORA_REGISTRO)
-            ? DateTime.Now.ToString("HH:mm:ss", CultureInfo.InvariantCulture)
-            : request.HORA_REGISTRO.Trim();
+        request.HORA_REGISTRO = NormalizarHoraRegistro(request.HORA_REGISTRO);
         request.FORMA_PAGO = NormalizarFormaPago(request.FORMA_PAGO);
         request.FECHA_VTO = string.IsNullOrWhiteSpace(request.FECHA_VTO)
             ? request.FECHA_DOCUMENTO?.Trim()
@@ -2083,34 +2710,20 @@ public class NotaController : ControllerBase
         request.detalle ??= new List<EnviarFacturaDetalleRequest>();
         for (var i = 0; i < request.detalle.Count; i++)
         {
-            request.detalle[i] = NormalizarDetalleFactura(request.detalle[i], i + 1, request.POR_IGV ?? 18m);
+            request.detalle[i] = NormalizarDetalleFactura(request.detalle[i], i + 1);
         }
 
-        request.SUB_TOTAL ??= request.detalle.Sum(x => x.importe ?? 0m);
-        request.TOTAL_IGV ??= request.detalle.Sum(x => x.igv ?? 0m);
+        request.POR_IGV ??= PorcentajeIgvDefault;
         request.TOTAL_ISC ??= request.detalle.Sum(x => x.isc ?? 0m);
         request.TOTAL_ICBPER ??= request.detalle.Sum(x => Convert.ToDecimal(x.impuestoIcbper ?? 0d));
         request.TOTAL_OTR_IMP ??= 0m;
-        request.TOTAL_GRAVADAS ??= request.detalle
-            .Where(x => string.Equals(x.codTipoOperacion, "10", StringComparison.Ordinal))
-            .Sum(x => x.importe ?? 0m);
-        request.TOTAL_EXONERADAS ??= request.detalle
-            .Where(x => string.Equals(x.codTipoOperacion, "20", StringComparison.Ordinal))
-            .Sum(x => x.importe ?? 0m);
-        request.TOTAL_INAFECTA ??= request.detalle
-            .Where(x => string.Equals(x.codTipoOperacion, "30", StringComparison.Ordinal))
-            .Sum(x => x.importe ?? 0m);
-        request.TOTAL_EXPORTACION ??= request.detalle
-            .Where(x => string.Equals(x.codTipoOperacion, "40", StringComparison.Ordinal))
-            .Sum(x => x.importe ?? 0m);
         request.TOTAL_GRATUITAS ??= 0m;
         request.TOTAL_DESCUENTO ??= request.detalle.Sum(x => x.descuento ?? 0m);
-        request.POR_IGV ??= 18m;
-        request.TOTAL ??= (request.SUB_TOTAL ?? 0m)
-            + (request.TOTAL_IGV ?? 0m)
-            + (request.TOTAL_ISC ?? 0m)
-            + (request.TOTAL_ICBPER ?? 0m)
-            + (request.TOTAL_OTR_IMP ?? 0m);
+
+        var totalBrutoDetalle = request.detalle.Sum(x => x.importe ?? 0m);
+        request.TOTAL ??= totalBrutoDetalle + (request.TOTAL_ICBPER ?? 0m);
+
+        AplicarCalculoTributarioParaEnvio(request);
 
         return request;
     }
@@ -2147,11 +2760,11 @@ public class NotaController : ControllerBase
         return itemsSinCodigo;
     }
 
-    private static EnviarFacturaDetalleRequest NormalizarDetalleFactura(EnviarFacturaDetalleRequest? item, int itemIndex, decimal porcentajeIgv)
+    private static EnviarFacturaDetalleRequest NormalizarDetalleFactura(EnviarFacturaDetalleRequest? item, int itemIndex)
     {
         item ??= new EnviarFacturaDetalleRequest();
         item.item ??= itemIndex;
-        item.unidadMedida = string.IsNullOrWhiteSpace(item.unidadMedida) ? "NIU" : item.unidadMedida.Trim().ToUpperInvariant();
+        item.unidadMedida = NormalizarUnidadMedidaSunat(item.unidadMedida, null);
         item.precioTipoCodigo = string.IsNullOrWhiteSpace(item.precioTipoCodigo) ? "01" : item.precioTipoCodigo.Trim();
         item.codTipoOperacion = string.IsNullOrWhiteSpace(item.codTipoOperacion) ? "10" : item.codTipoOperacion.Trim();
         item.codigo = string.IsNullOrWhiteSpace(item.codigo) ? $"ITEM{item.item}" : item.codigo.Trim();
@@ -2161,53 +2774,51 @@ public class NotaController : ControllerBase
         item.igv ??= 0m;
         item.isc ??= 0m;
         item.descuento ??= 0m;
-        item.subTotal ??= 0m;
         item.impuestoIcbper ??= 0d;
         item.cantidadBolsas ??= 0;
         item.sunatIcbper ??= 0d;
         item.tipoIsc = string.IsNullOrWhiteSpace(item.tipoIsc) ? string.Empty : item.tipoIsc.Trim();
-        item.biIsc ??= item.importe ?? 0m;
+        item.biIsc ??= 0m;
         item.porIsc ??= 0m;
+
+        if (!item.importe.HasValue && item.cantidad > 0 && item.precio.HasValue)
+        {
+            item.importe = item.cantidad.Value * item.precio.Value;
+        }
 
         if (!item.importe.HasValue && item.cantidad > 0 && item.precioSinImpuesto.HasValue)
         {
-            item.importe = decimal.Round(item.cantidad.Value * item.precioSinImpuesto.Value, 2, MidpointRounding.AwayFromZero);
-        }
-
-        if (!item.precioSinImpuesto.HasValue && item.cantidad > 0 && item.importe.HasValue)
-        {
-            item.precioSinImpuesto = decimal.Round(item.importe.Value / item.cantidad.Value, 10, MidpointRounding.AwayFromZero);
+            item.importe = item.cantidad.Value * item.precioSinImpuesto.Value;
         }
 
         if (!item.precio.HasValue && item.cantidad > 0)
         {
-            var importe = item.importe ?? 0m;
-            var igv = item.igv ?? 0m;
-            item.precio = decimal.Round((importe + igv) / item.cantidad.Value, 10, MidpointRounding.AwayFromZero);
+            item.precio = item.importe.Value / item.cantidad.Value;
         }
 
-        if (!item.subTotal.HasValue)
-        {
-            item.subTotal = item.importe ?? 0m;
-        }
-
-        if (item.igv.GetValueOrDefault() == 0m &&
-            string.Equals(item.codTipoOperacion, "10", StringComparison.Ordinal) &&
-            item.importe.HasValue)
-        {
-            item.igv = decimal.Round(item.importe.Value * (porcentajeIgv / 100m), 2, MidpointRounding.AwayFromZero);
-            if (!item.precio.HasValue && item.cantidad.GetValueOrDefault() > 0)
-            {
-                item.precio = decimal.Round((item.importe.Value + item.igv.Value) / item.cantidad.Value, 10, MidpointRounding.AwayFromZero);
-            }
-        }
+        item.subTotal ??= item.importe ?? 0m;
+        item.biIsc ??= item.importe ?? 0m;
 
         return item;
     }
 
     private static CPE MapearFacturaLegacy(EnviarFacturaRequest request, int tipoProceso, string rutaPfxNormalizada)
     {
-        var factura = new CPE
+        return MapearComprobanteVentaLegacy(request, tipoProceso, rutaPfxNormalizada, "01");
+    }
+
+    private static CPE MapearBoletaLegacy(EnviarFacturaRequest request, int tipoProceso, string rutaPfxNormalizada)
+    {
+        return MapearComprobanteVentaLegacy(request, tipoProceso, rutaPfxNormalizada, "03");
+    }
+
+    private static CPE MapearComprobanteVentaLegacy(
+        EnviarFacturaRequest request,
+        int tipoProceso,
+        string rutaPfxNormalizada,
+        string codigoTipoDocumento)
+    {
+        var comprobante = new CPE
         {
             TIPO_OPERACION = request.TIPO_OPERACION?.Trim(),
             HORA_REGISTRO = request.HORA_REGISTRO?.Trim(),
@@ -2232,7 +2843,7 @@ public class NotaController : ControllerBase
             COD_OTR_COMPROBANTE = request.COD_OTR_COMPROBANTE?.Trim() ?? string.Empty,
             NRO_COMPROBANTE = request.NRO_COMPROBANTE?.Trim(),
             FECHA_DOCUMENTO = request.FECHA_DOCUMENTO?.Trim(),
-            COD_TIPO_DOCUMENTO = "01",
+            COD_TIPO_DOCUMENTO = codigoTipoDocumento,
             COD_MONEDA = request.COD_MONEDA?.Trim(),
             NRO_DOCUMENTO_CLIENTE = request.NRO_DOCUMENTO_CLIENTE?.Trim(),
             RAZON_SOCIAL_CLIENTE = request.RAZON_SOCIAL_CLIENTE?.Trim(),
@@ -2271,7 +2882,7 @@ public class NotaController : ControllerBase
 
         foreach (var detalle in request.detalle ?? Enumerable.Empty<EnviarFacturaDetalleRequest>())
         {
-            factura.detalle.Add(new CPE_DETALLE
+            comprobante.detalle.Add(new CPE_DETALLE
             {
                 ITEM = detalle.item,
                 UNIDAD_MEDIDA = detalle.unidadMedida?.Trim(),
@@ -2297,7 +2908,7 @@ public class NotaController : ControllerBase
             });
         }
 
-        return factura;
+        return comprobante;
     }
 
     private static CPE MapearNotaCreditoLegacy(EnviarFacturaRequest request, int tipoProceso, string rutaPfxNormalizada)
@@ -2461,6 +3072,68 @@ public class NotaController : ControllerBase
         }
     }
 
+    private async Task<object> RegistrarBoletaEnBaseDatosAsync(
+        EnviarFacturaRequest request,
+        Dictionary<string, string>? respuestaLegacy,
+        CancellationToken cancellationToken)
+    {
+        if (!request.NOTA_ID.HasValue || request.NOTA_ID.Value <= 0)
+        {
+            return new
+            {
+                ok = false,
+                mensaje = "NOTA_ID es requerido para actualizar DocumentoVenta en BD."
+            };
+        }
+
+        var codSunat = ObtenerValorLegacy(respuestaLegacy, "cod_sunat");
+        if (!EsCodigoFacturaAceptado(codSunat))
+        {
+            return new
+            {
+                ok = false,
+                mensaje = "No se actualizó BD porque SUNAT/OCE no devolvió aceptación de la boleta."
+            };
+        }
+
+        var mensajeSunat = ObtenerValorLegacy(respuestaLegacy, "msj_sunat");
+        var hashCpe = ObtenerValorLegacy(respuestaLegacy, "hash_cpe");
+        var data = string.Join("|", new[]
+        {
+            request.NOTA_ID.Value.ToString(CultureInfo.InvariantCulture),
+            SanitizarCampoListaOrden(codSunat),
+            SanitizarCampoListaOrden(mensajeSunat),
+            SanitizarCampoListaOrden(hashCpe)
+        });
+
+        try
+        {
+            var resultado = await _mediator.ReenviarFacturaAsync(data, cancellationToken);
+            if (string.IsNullOrWhiteSpace(resultado))
+            {
+                return new
+                {
+                    ok = true,
+                    mensaje = "SUNAT/OCE aceptó la boleta y se ejecutó uspReEnviarFactura, pero el SP no devolvió payload."
+                };
+            }
+
+            return new
+            {
+                ok = true,
+                resultado
+            };
+        }
+        catch (Exception ex)
+        {
+            return new
+            {
+                ok = false,
+                mensaje = $"SUNAT/OCE aceptó la boleta, pero falló la actualización en BD: {ex.Message}"
+            };
+        }
+    }
+
     private async Task<object> RegistrarNotaCreditoEnBaseDatosAsync(
         EnviarFacturaRequest request,
         Dictionary<string, string>? respuestaLegacy,
@@ -2477,20 +3150,26 @@ public class NotaController : ControllerBase
         }
 
         var mensajeSunat = ObtenerValorLegacy(respuestaLegacy, "msj_sunat");
+        var hashCpe = ObtenerValorLegacy(respuestaLegacy, "hash_cpe");
 
         if (!string.IsNullOrWhiteSpace(request.LISTA_ORDEN_NC))
         {
             try
             {
-                var resultado = await _mediator.RegistrarNotaCreditoAsync(request.LISTA_ORDEN_NC.Trim(), cancellationToken);
+                var listaOrdenNormalizada = ForzarDocuConceptoListaOrdenNotaCredito(request.LISTA_ORDEN_NC.Trim());
+                var resultado = await _mediator.RegistrarNotaCreditoAsync(listaOrdenNormalizada, cancellationToken);
                 var ok = string.Equals(resultado?.Trim(), "true", StringComparison.OrdinalIgnoreCase);
+                var estadoActualizado = ok && await MarcarDocumentoModificadoComoAnuladoAsync(request, cancellationToken);
                 return new
                 {
                     ok,
                     accion_bd = "uspinsertarNC",
+                    estado_documento_modificado = estadoActualizado,
                     resultado = string.IsNullOrWhiteSpace(resultado) ? string.Empty : resultado,
                     mensaje = ok
-                        ? "SUNAT/OCE aceptó la nota de crédito y se ejecutó uspinsertarNC."
+                        ? estadoActualizado
+                            ? "SUNAT/OCE aceptó la nota de crédito, se ejecutó uspinsertarNC y el documento modificado quedó ANULADO."
+                            : "SUNAT/OCE aceptó la nota de crédito y se ejecutó uspinsertarNC."
                         : "SUNAT/OCE aceptó la nota de crédito, pero uspinsertarNC no devolvió 'true'."
                 };
             }
@@ -2507,6 +3186,45 @@ public class NotaController : ControllerBase
 
         if (request.DOCU_ID.HasValue && request.DOCU_ID.Value > 0)
         {
+            try
+            {
+                var listaOrdenAuto = await ConstruirListaOrdenNotaCreditoDesdeBdAsync(
+                    request,
+                    codSunat,
+                    mensajeSunat,
+                    hashCpe,
+                    cancellationToken);
+
+                if (!string.IsNullOrWhiteSpace(listaOrdenAuto))
+                {
+                    var resultado = await _mediator.RegistrarNotaCreditoAsync(listaOrdenAuto, cancellationToken);
+                    var ok = string.Equals(resultado?.Trim(), "true", StringComparison.OrdinalIgnoreCase);
+                    var estadoActualizado = ok && await MarcarDocumentoModificadoComoAnuladoAsync(request, cancellationToken);
+                    return new
+                    {
+                        ok,
+                        accion_bd = "uspinsertarNC(auto)",
+                        estado_documento_modificado = estadoActualizado,
+                        resultado = string.IsNullOrWhiteSpace(resultado) ? string.Empty : resultado,
+                        mensaje = ok
+                            ? estadoActualizado
+                                ? "SUNAT/OCE aceptó la nota de crédito, se ejecutó uspinsertarNC (LISTA_ORDEN_NC armado en backend) y el documento modificado quedó ANULADO."
+                                : "SUNAT/OCE aceptó la nota de crédito y se ejecutó uspinsertarNC (LISTA_ORDEN_NC armado en backend)."
+                            : "SUNAT/OCE aceptó la nota de crédito, se intentó uspinsertarNC auto, pero no devolvió 'true'."
+                    };
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "No se pudo armar/registrar LISTA_ORDEN_NC automáticamente para DOCU_ID={DocuId}. Se intentará flujo de reenvío.",
+                    request.DOCU_ID.Value);
+            }
+        }
+
+        if (request.DOCU_ID.HasValue && request.DOCU_ID.Value > 0)
+        {
             var data = string.Join("|", new[]
             {
                 request.DOCU_ID.Value.ToString(CultureInfo.InvariantCulture),
@@ -2518,13 +3236,17 @@ public class NotaController : ControllerBase
             {
                 var resultado = await _mediator.ReenviarNotaCreditoAsync(data, cancellationToken);
                 var ok = string.Equals(resultado?.Trim(), "true", StringComparison.OrdinalIgnoreCase);
+                var estadoActualizado = ok && await MarcarDocumentoModificadoComoAnuladoAsync(request, cancellationToken);
                 return new
                 {
                     ok,
                     accion_bd = "uspReEnviarNotaCredito",
+                    estado_documento_modificado = estadoActualizado,
                     resultado = string.IsNullOrWhiteSpace(resultado) ? string.Empty : resultado,
                     mensaje = ok
-                        ? "SUNAT/OCE aceptó la nota de crédito y se ejecutó uspReEnviarNotaCredito."
+                        ? estadoActualizado
+                            ? "SUNAT/OCE aceptó la nota de crédito, se ejecutó uspReEnviarNotaCredito y el documento modificado quedó ANULADO."
+                            : "SUNAT/OCE aceptó la nota de crédito y se ejecutó uspReEnviarNotaCredito."
                         : "SUNAT/OCE aceptó la nota de crédito, pero uspReEnviarNotaCredito no devolvió 'true'."
                 };
             }
@@ -2544,6 +3266,88 @@ public class NotaController : ControllerBase
             ok = false,
             mensaje = "SUNAT/OCE aceptó la nota de crédito, pero no se registró en BD porque falta LISTA_ORDEN_NC o DOCU_ID."
         };
+    }
+
+    private async Task<bool> MarcarDocumentoModificadoComoAnuladoAsync(
+        EnviarFacturaRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!string.Equals((request.COD_TIPO_MOTIVO ?? string.Empty).Trim(), "01", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var connectionString = _configuration.GetConnectionString("DefaultConnection");
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            return false;
+        }
+
+        var (serieRef, numeroRef) = SepararSerieNumeroComprobante(request.NRO_DOCUMENTO_MODIFICA);
+        if ((!request.DOCU_ID.HasValue || request.DOCU_ID.Value <= 0) &&
+            (string.IsNullOrWhiteSpace(serieRef) || string.IsNullOrWhiteSpace(numeroRef)))
+        {
+            return false;
+        }
+
+        const string sql = """
+            DECLARE @DocuIdAfectado BIGINT;
+
+            SELECT TOP (1)
+                @DocuIdAfectado = d.DocuId
+            FROM DocumentoVenta d
+            WHERE d.TipoCodigo IN ('01', '03')
+              AND (
+                    (@SerieRef <> '' AND @NumeroRef <> '' AND LTRIM(RTRIM(d.DocuSerie)) = @SerieRef AND LTRIM(RTRIM(d.DocuNumero)) = @NumeroRef)
+                    OR ((@SerieRef = '' OR @NumeroRef = '') AND @DocuId > 0 AND d.DocuId = @DocuId)
+                  )
+            ORDER BY CASE
+                        WHEN @SerieRef <> '' AND @NumeroRef <> '' AND LTRIM(RTRIM(d.DocuSerie)) = @SerieRef AND LTRIM(RTRIM(d.DocuNumero)) = @NumeroRef THEN 0
+                        WHEN @DocuId > 0 AND d.DocuId = @DocuId THEN 1
+                        ELSE 2
+                     END,
+                     d.DocuId DESC;
+
+            IF @DocuIdAfectado IS NOT NULL
+            BEGIN
+                UPDATE DocumentoVenta
+                SET DocuEstado = 'ANULADO'
+                WHERE DocuId = @DocuIdAfectado
+                  AND ISNULL(LTRIM(RTRIM(DocuEstado)), '') <> 'ANULADO';
+
+                UPDATE n
+                SET NotaEstado = 'ANULADO'
+                FROM NotaPedido n
+                INNER JOIN DocumentoVenta d ON d.NotaId = n.NotaId
+                WHERE d.DocuId = @DocuIdAfectado
+                  AND ISNULL(LTRIM(RTRIM(n.NotaEstado)), '') <> 'ANULADO';
+            END
+
+            SELECT ISNULL(@DocuIdAfectado, 0);
+            """;
+
+        try
+        {
+            await using var con = new SqlConnection(connectionString);
+            await using var cmd = new SqlCommand(sql, con);
+            cmd.Parameters.AddWithValue("@DocuId", request.DOCU_ID ?? 0L);
+            cmd.Parameters.AddWithValue("@SerieRef", serieRef);
+            cmd.Parameters.AddWithValue("@NumeroRef", numeroRef);
+
+            await con.OpenAsync(cancellationToken);
+            var value = await cmd.ExecuteScalarAsync(cancellationToken);
+            var docuIdAfectado = value == null || value == DBNull.Value ? 0L : Convert.ToInt64(value, CultureInfo.InvariantCulture);
+            return docuIdAfectado > 0;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "No se pudo marcar como ANULADO el documento modificado de la NC. DOCU_ID={DocuId}, NRO_DOCUMENTO_MODIFICA={NroDocumentoModifica}",
+                request.DOCU_ID,
+                request.NRO_DOCUMENTO_MODIFICA);
+            return false;
+        }
     }
 
     private async Task<object> EjecutarEnvioNotaCreditoAsync(
@@ -2616,6 +3420,44 @@ public class NotaController : ControllerBase
             {
                 ok = false,
                 mensaje = "No se registró en BD porque el envío de la factura a OCE/SUNAT no fue exitoso."
+            };
+        }
+
+        return NormalizarRespuestaFactura(respuestaLegacy, registroBd: registroBd);
+    }
+
+    private async Task<object> EjecutarEnvioBoletaAsync(
+        EnviarFacturaRequest requestBoleta,
+        int tipoProceso,
+        CancellationToken cancellationToken)
+    {
+        var rutaPfxNormalizada = ResolverRutaPfx(requestBoleta.RUTA_PFX ?? string.Empty);
+        var boleta = MapearBoletaLegacy(requestBoleta, tipoProceso, rutaPfxNormalizada);
+        var respuestaLegacy = _cpeGateway.Envio(boleta);
+
+        var flgRta = ObtenerValorLegacy(respuestaLegacy, "flg_rta", "0");
+        var codSunat = ObtenerValorLegacy(respuestaLegacy, "cod_sunat");
+        var aceptadoSunat = string.Equals(flgRta, "1", StringComparison.Ordinal) && EsCodigoFacturaAceptado(codSunat);
+
+        object? registroBd;
+        if (aceptadoSunat)
+        {
+            registroBd = await RegistrarBoletaEnBaseDatosAsync(requestBoleta, respuestaLegacy, cancellationToken);
+        }
+        else if (string.Equals(flgRta, "1", StringComparison.Ordinal))
+        {
+            registroBd = new
+            {
+                ok = false,
+                mensaje = $"SUNAT/OCE respondió con código {codSunat}. No se actualizó BD porque la boleta no quedó aceptada."
+            };
+        }
+        else
+        {
+            registroBd = new
+            {
+                ok = false,
+                mensaje = "No se registró en BD porque el envío de la boleta a OCE/SUNAT no fue exitoso."
             };
         }
 
@@ -2732,25 +3574,28 @@ public class NotaController : ControllerBase
             .Where(x => x.Ok)
             .ToDictionary(x => int.Parse(x.Id!, CultureInfo.InvariantCulture), x => x.Item);
 
+        var totalIcbper = nota.ICBPER ?? 0m;
+        var totalDocumento = nota.NotaTotal ?? (detalles.Sum(x => x.DetalleImporte ?? 0m) + totalIcbper);
+
         var request = new EnviarFacturaRequest
         {
             NOTA_ID = notaId,
             TIPO_OPERACION = "0101",
-            HORA_REGISTRO = (nota.NotaFecha ?? DateTime.Now).ToString("HH:mm:ss", CultureInfo.InvariantCulture),
-            SUB_TOTAL = nota.NotaSubtotal ?? detalles.Sum(x => x.DetalleImporte ?? 0m),
-            TOTAL = nota.NotaTotal ?? 0m,
-            TOTAL_IGV = DecimalMax(0m, (nota.NotaTotal ?? 0m) - (nota.NotaSubtotal ?? 0m)),
+            HORA_REGISTRO = NormalizarHoraRegistro(ResolverHoraRegistroDesdeNota(nota.NotaFechaPago, nota.NotaFecha)),
+            SUB_TOTAL = 0m,
+            TOTAL = totalDocumento,
+            TOTAL_IGV = 0m,
             TOTAL_ISC = 0m,
-            TOTAL_ICBPER = nota.ICBPER ?? 0m,
+            TOTAL_ICBPER = totalIcbper,
             TOTAL_OTR_IMP = 0m,
             TOTAL_EXPORTACION = 0m,
             TOTAL_DESCUENTO = nota.NotaDescuento ?? 0m,
             TOTAL_GRATUITAS = 0m,
-            TOTAL_GRAVADAS = nota.NotaSubtotal ?? detalles.Sum(x => x.DetalleImporte ?? 0m),
+            TOTAL_GRAVADAS = 0m,
             TOTAL_EXONERADAS = 0m,
             TOTAL_INAFECTA = 0m,
-            POR_IGV = 18m,
-            TOTAL_LETRAS = Letras.enletras((nota.NotaTotal ?? 0m).ToString("N2", CultureInfo.InvariantCulture)) + " SOLES",
+            POR_IGV = PorcentajeIgvDefault,
+            TOTAL_LETRAS = Letras.enletras(totalDocumento.ToString("N2", CultureInfo.InvariantCulture)) + " SOLES",
             NRO_COMPROBANTE = $"{(nota.NotaSerie ?? string.Empty).Trim()}-{numeroComprobante}".Trim('-'),
             FECHA_DOCUMENTO = FormatearFechaIso(nota.NotaFecha),
             FECHA_VTO = FormatearFechaIso(nota.NotaFechaPago ?? nota.NotaFecha),
@@ -2787,7 +3632,6 @@ public class NotaController : ControllerBase
             CODIGO_ANEXO = "0000"
         };
 
-        var porcentajeIgv = request.POR_IGV ?? 18m;
         var detalleFactura = new List<EnviarFacturaDetalleRequest>();
         var indice = 1;
 
@@ -2819,22 +3663,18 @@ public class NotaController : ControllerBase
             }
 
             var cantidad = detalle.DetalleCantidad ?? 0m;
-            var importe = detalle.DetalleImporte ?? 0m;
-            var precioSinImpuesto = detalle.DetallePrecio ?? (cantidad > 0 ? decimal.Round(importe / cantidad, 10, MidpointRounding.AwayFromZero) : 0m);
-            var igv = decimal.Round(importe * (porcentajeIgv / 100m), 2, MidpointRounding.AwayFromZero);
-            var precioConImpuesto = cantidad > 0
-                ? decimal.Round((importe + igv) / cantidad, 10, MidpointRounding.AwayFromZero)
-                : 0m;
+            var importeBruto = detalle.DetalleImporte ?? 0m;
+            var precioOriginal = detalle.DetallePrecio ?? (cantidad > 0 ? (importeBruto / cantidad) : 0m);
 
             detalleFactura.Add(new EnviarFacturaDetalleRequest
             {
                 item = indice,
                 unidadMedida = NormalizarUnidadMedidaSunat(detalle.DetalleUm, producto?.ProductoUM),
                 cantidad = cantidad,
-                precio = precioConImpuesto,
-                importe = importe,
-                precioSinImpuesto = precioSinImpuesto,
-                igv = igv,
+                precio = precioOriginal,
+                importe = importeBruto,
+                precioSinImpuesto = 0m,
+                igv = 0m,
                 codTipoOperacion = "10",
                 codigo = string.IsNullOrWhiteSpace(producto?.ProductoCodigo)
                     ? $"PROD{detalle.IdProducto.Value}"
@@ -2844,14 +3684,546 @@ public class NotaController : ControllerBase
                     ? producto?.ProductoNombre?.Trim()
                     : detalle.DetalleDescripcion.Trim(),
                 descuento = 0m,
-                subTotal = importe
+                subTotal = 0m
             });
 
             indice++;
         }
 
         request.detalle = detalleFactura;
+        AplicarCalculoTributarioParaEnvio(request);
+        request.TOTAL_LETRAS = Letras.enletras((request.TOTAL ?? 0m).ToString("N2", CultureInfo.InvariantCulture)) + " SOLES";
         return request;
+    }
+
+    private async Task<object> IntentarEmitirBoletaDesdeOrdenAsync(
+        NotaPedido nota,
+        IReadOnlyList<DetalleNota> detalles,
+        string? resultadoRegistro,
+        CancellationToken cancellationToken)
+    {
+        if (!EsBoleta(nota.NotaDocu))
+        {
+            return CrearRespuestaFacturaPendiente("La orden registrada no corresponde a una BOLETA.");
+        }
+
+        try
+        {
+            var notaId = ExtraerNotaIdDeRegistro(resultadoRegistro) ?? (nota.NotaId > 0 ? nota.NotaId : null);
+            var numeroComprobante = ResolverNumeroComprobanteDesdeRegistro(resultadoRegistro, nota.NotaNumero);
+            if (!notaId.HasValue || notaId.Value <= 0)
+            {
+                _logger.LogWarning("No se pudo determinar NotaId para emitir la boleta automaticamente. Resultado registro: {Resultado}", resultadoRegistro);
+                return CrearRespuestaFacturaPendiente("La orden se registró, pero no se pudo determinar el NotaId para emitir la boleta.");
+            }
+
+            var requestBoleta = await ConstruirRequestBoletaDesdeOrdenAsync(nota, detalles, notaId.Value, numeroComprobante, cancellationToken);
+            if (requestBoleta is null)
+            {
+                return CrearRespuestaFacturaPendiente("La orden se registró, pero no se pudo completar la informacion necesaria para emitir la boleta.");
+            }
+
+            requestBoleta = NormalizarRequestBoleta(requestBoleta);
+            var errores = ValidarRequestBoleta(requestBoleta);
+            if (errores.Count > 0)
+            {
+                _logger.LogWarning(
+                    "La orden BOLETA {NotaId} se registro pero no se emitio automaticamente por datos faltantes: {Errores}",
+                    notaId.Value,
+                    string.Join(" | ", errores));
+                return CrearRespuestaFacturaPendiente("La orden se registró, pero faltan datos para emitir la boleta: " + string.Join(" | ", errores));
+            }
+
+            var tipoProceso = ParseTipoProceso(requestBoleta.TIPO_PROCESO);
+            if (!tipoProceso.HasValue || tipoProceso.Value < 1 || tipoProceso.Value > 3)
+            {
+                _logger.LogWarning("La orden BOLETA {NotaId} se registro pero no se emitio automaticamente por TIPO_PROCESO invalido.", notaId.Value);
+                return CrearRespuestaFacturaPendiente("La orden se registró, pero el TIPO_PROCESO configurado es inválido para emitir la boleta.");
+            }
+
+            var respuesta = await EjecutarEnvioBoletaAsync(requestBoleta, tipoProceso.Value, cancellationToken);
+            var respuestaJson = JsonSerializer.Serialize(respuesta);
+            _logger.LogInformation("Resultado de emision automatica de BOLETA para NotaId {NotaId}: {Respuesta}", notaId.Value, respuestaJson);
+            return respuesta;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "La orden BOLETA se registro, pero la emision automatica fallo y quedo pendiente para reintento.");
+            return CrearRespuestaFacturaPendiente("La orden se registró, pero la emisión automática al OCE/SUNAT falló: " + ex.Message);
+        }
+    }
+
+    private async Task<EnviarFacturaRequest?> ConstruirRequestBoletaDesdeOrdenAsync(
+        NotaPedido nota,
+        IReadOnlyList<DetalleNota> detalles,
+        long notaId,
+        string numeroComprobante,
+        CancellationToken cancellationToken)
+    {
+        var request = await ConstruirRequestFacturaDesdeOrdenAsync(nota, detalles, notaId, numeroComprobante, cancellationToken);
+        if (request is null)
+        {
+            return null;
+        }
+
+        request.COD_TIPO_DOCUMENTO = "03";
+        request.detalle ??= new List<EnviarFacturaDetalleRequest>();
+        foreach (var item in request.detalle)
+        {
+            if (string.IsNullOrWhiteSpace(item.codigoSunat))
+            {
+                item.codigoSunat = CodigoSunatBoletaFallback;
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(request.NRO_DOCUMENTO_CLIENTE))
+        {
+            request.NRO_DOCUMENTO_CLIENTE = "00000000";
+        }
+
+        request.TIPO_DOCUMENTO_CLIENTE = InferirTipoDocumentoCliente(request.TIPO_DOCUMENTO_CLIENTE, request.NRO_DOCUMENTO_CLIENTE);
+        if (string.IsNullOrWhiteSpace(request.TIPO_DOCUMENTO_CLIENTE))
+        {
+            request.TIPO_DOCUMENTO_CLIENTE = "1";
+        }
+
+        if (string.IsNullOrWhiteSpace(request.RAZON_SOCIAL_CLIENTE))
+        {
+            request.RAZON_SOCIAL_CLIENTE = "VARIOS";
+        }
+
+        return request;
+    }
+
+    private async Task<(EnviarFacturaRequest? Request, int StatusCode, string Mensaje)> ConstruirRequestAnulacionBoletaIndividualAsync(
+        AnularBoletaIndividualRequest payload,
+        CancellationToken cancellationToken)
+    {
+        var requestBusqueda = new EnviarFacturaRequest
+        {
+            DOCU_ID = payload.DOCU_ID,
+            NRO_DOCUMENTO_MODIFICA = payload.NRO_DOCUMENTO_MODIFICA
+        };
+
+        var origen = await ObtenerOrigenNotaCreditoDesdeBdAsync(requestBusqueda, cancellationToken);
+        if (origen is null)
+        {
+            return (null, (int)HttpStatusCode.NotFound, "No se encontró la boleta a anular (DOCU_ID/NRO_DOCUMENTO_MODIFICA).");
+        }
+
+        if (!string.Equals(origen.TipoCodigo, "03", StringComparison.Ordinal))
+        {
+            return (null, (int)HttpStatusCode.BadRequest, "El documento encontrado no es una boleta electrónica (TipoCodigo distinto de '03').");
+        }
+
+        if (string.Equals(origen.Estado, "ANULADO", StringComparison.OrdinalIgnoreCase))
+        {
+            return (null, (int)HttpStatusCode.Conflict, "La boleta ya se encuentra ANULADA.");
+        }
+
+        if (origen.CompaniaId <= 0)
+        {
+            return (null, (int)HttpStatusCode.BadRequest, "La boleta no tiene CompaniaId válido.");
+        }
+
+        var companias = await _companias.ListarAsync(page: 1, pageSize: 1000, cancellationToken: cancellationToken);
+        var compania = companias.FirstOrDefault(x => x.CompaniaId == origen.CompaniaId);
+        if (compania is null)
+        {
+            return (null, (int)HttpStatusCode.NotFound, $"No se encontró la compañía {origen.CompaniaId} para construir la nota de crédito.");
+        }
+
+        var credenciales = await _mediator.ObtenerCredencialesSunatAsync(origen.CompaniaId, cancellationToken);
+        if (credenciales is null)
+        {
+            return (null, (int)HttpStatusCode.BadRequest, "La compañía no tiene credenciales SUNAT configuradas.");
+        }
+
+        var seriePreferidaNc = ResolverSerieNcParaBoleta(origen.Serie);
+        var (serieNc, numeroNc) = await ObtenerSerieNumeroNotaCreditoAsync(origen.CompaniaId, seriePreferidaNc, cancellationToken);
+        if (string.IsNullOrWhiteSpace(serieNc) || string.IsNullOrWhiteSpace(numeroNc))
+        {
+            return (null, (int)HttpStatusCode.BadRequest, "No se pudo generar el correlativo de nota de crédito. Verifique SerieNC en MAQUINAS.");
+        }
+
+        DateTime fechaDocumento;
+        var fechaDocumentoRaw = payload.FECHA_DOCUMENTO?.Trim();
+        if (!string.IsNullOrWhiteSpace(fechaDocumentoRaw))
+        {
+            if (!DateTime.TryParseExact(
+                    fechaDocumentoRaw,
+                    "yyyy-MM-dd",
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.None,
+                    out fechaDocumento))
+            {
+                return (null, (int)HttpStatusCode.BadRequest, "FECHA_DOCUMENTO debe tener formato yyyy-MM-dd.");
+            }
+        }
+        else
+        {
+            fechaDocumento = ObtenerAhoraCpe().Date;
+        }
+
+        if (origen.Detalles.Count == 0)
+        {
+            return (null, (int)HttpStatusCode.BadRequest, "La boleta no tiene detalle para construir la nota de crédito.");
+        }
+
+        var ubigeoEmpresa = await ObtenerUbigeoAsync(compania.CompaniaCodigoUBG, cancellationToken);
+        var ubigeoCliente = ubigeoEmpresa;
+        var tipoProceso = ResolverTipoProcesoDesdeCredenciales(credenciales);
+
+        var nroDocumentoCliente = !string.IsNullOrWhiteSpace(origen.ClienteRuc)
+            ? origen.ClienteRuc.Trim()
+            : !string.IsNullOrWhiteSpace(origen.ClienteDni)
+                ? origen.ClienteDni.Trim()
+                : "00000000";
+
+        var tipoDocumentoCliente = InferirTipoDocumentoCliente(null, nroDocumentoCliente);
+        if (string.IsNullOrWhiteSpace(tipoDocumentoCliente))
+        {
+            tipoDocumentoCliente = "1";
+        }
+
+        var codTipoMotivo = "01";
+        var descripcionMotivo = string.IsNullOrWhiteSpace(payload.DESCRIPCION_MOTIVO)
+            ? DocuConceptoNotaCreditoDefault
+            : payload.DESCRIPCION_MOTIVO.Trim();
+        var ticketManual = (payload.TICKET_REFERENCIA ?? string.Empty).Trim();
+        var ticketResumenBoleta = !string.IsNullOrWhiteSpace(ticketManual)
+            ? ticketManual
+            : await ObtenerTicketResumenBoletaAsync(origen, cancellationToken);
+        var tipoComprobanteModifica = string.IsNullOrWhiteSpace(ticketResumenBoleta) ? "03" : "12";
+        var referenciaModifica = string.IsNullOrWhiteSpace(ticketResumenBoleta)
+            ? $"{origen.Serie}-{origen.Numero}".Trim('-')
+            : ticketResumenBoleta;
+
+        var detalleNc = new List<EnviarFacturaDetalleRequest>();
+        var item = 1;
+        foreach (var detalle in origen.Detalles)
+        {
+            var cantidad = detalle.Cantidad > 0m ? detalle.Cantidad : 1m;
+            var importe = detalle.Importe;
+            if (importe <= 0m && detalle.Precio > 0m)
+            {
+                importe = detalle.Precio * cantidad;
+            }
+
+            var precio = detalle.Precio > 0m
+                ? detalle.Precio
+                : (cantidad > 0m ? importe / cantidad : 0m);
+
+            detalleNc.Add(new EnviarFacturaDetalleRequest
+            {
+                item = item,
+                unidadMedida = NormalizarUnidadMedidaSunat(detalle.Um, detalle.Um),
+                cantidad = cantidad,
+                precio = precio,
+                importe = importe,
+                precioSinImpuesto = 0m,
+                igv = 0m,
+                codTipoOperacion = "10",
+                codigo = $"PROD{detalle.IdProducto}",
+                codigoSunat = string.IsNullOrWhiteSpace(detalle.CodigoSunat)
+                    ? CodigoSunatNotaCreditoFallback
+                    : detalle.CodigoSunat.Trim(),
+                descripcion = string.IsNullOrWhiteSpace(detalle.Descripcion)
+                    ? $"ITEM {item}"
+                    : detalle.Descripcion.Trim(),
+                descuento = 0m,
+                subTotal = 0m
+            });
+            item++;
+        }
+
+        var requestNc = new EnviarFacturaRequest
+        {
+            NOTA_ID = origen.NotaId,
+            DOCU_ID = origen.DocuId,
+            TIPO_OPERACION = "0101",
+            HORA_REGISTRO = ObtenerAhoraCpe().ToString("HH:mm:ss", CultureInfo.InvariantCulture),
+            SUB_TOTAL = origen.SubTotal,
+            TOTAL = origen.Total,
+            TOTAL_IGV = origen.Igv,
+            TOTAL_ISC = 0m,
+            TOTAL_ICBPER = origen.Icbper,
+            TOTAL_OTR_IMP = 0m,
+            TOTAL_EXPORTACION = 0m,
+            TOTAL_DESCUENTO = origen.Descuento,
+            TOTAL_GRATUITAS = 0m,
+            TOTAL_GRAVADAS = origen.Gravada,
+            TOTAL_EXONERADAS = 0m,
+            TOTAL_INAFECTA = 0m,
+            POR_IGV = PorcentajeIgvDefault,
+            TOTAL_LETRAS = Letras.enletras((origen.Total).ToString("N2", CultureInfo.InvariantCulture)) + " SOLES",
+            NRO_COMPROBANTE = $"{serieNc}-{numeroNc}".Trim('-'),
+            FECHA_DOCUMENTO = fechaDocumento.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            FECHA_VTO = fechaDocumento.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            COD_TIPO_DOCUMENTO = "07",
+            COD_MONEDA = "PEN",
+            NRO_DOCUMENTO_CLIENTE = nroDocumentoCliente,
+            RAZON_SOCIAL_CLIENTE = string.IsNullOrWhiteSpace(origen.ClienteRazon) ? "VARIOS" : origen.ClienteRazon.Trim(),
+            TIPO_DOCUMENTO_CLIENTE = tipoDocumentoCliente,
+            DIRECCION_CLIENTE = string.IsNullOrWhiteSpace(origen.DireccionFiscal) ? "-" : origen.DireccionFiscal.Trim(),
+            CIUDAD_CLIENTE = ubigeoCliente?.Provincia ?? compania.CompaniaNomUBG?.Trim() ?? compania.CompaniaDistrito?.Trim(),
+            COD_PAIS_CLIENTE = "PE",
+            COD_UBIGEO_CLIENTE = compania.CompaniaCodigoUBG?.Trim(),
+            DEPARTAMENTO_CLIENTE = ubigeoCliente?.Departamento ?? compania.CompaniaNomUBG?.Trim() ?? compania.CompaniaDistrito?.Trim(),
+            PROVINCIA_CLIENTE = ubigeoCliente?.Provincia ?? compania.CompaniaNomUBG?.Trim() ?? compania.CompaniaDistrito?.Trim(),
+            DISTRITO_CLIENTE = ubigeoCliente?.Distrito ?? compania.CompaniaDistrito?.Trim() ?? compania.CompaniaNomUBG?.Trim(),
+            NRO_DOCUMENTO_EMPRESA = compania.CompaniaRUC?.Trim(),
+            TIPO_DOCUMENTO_EMPRESA = "6",
+            NOMBRE_COMERCIAL_EMPRESA = string.IsNullOrWhiteSpace(compania.CompaniaComercial)
+                ? compania.CompaniaRazonSocial?.Trim()
+                : compania.CompaniaComercial.Trim(),
+            CODIGO_UBIGEO_EMPRESA = compania.CompaniaCodigoUBG?.Trim(),
+            DIRECCION_EMPRESA = string.IsNullOrWhiteSpace(compania.CompaniaDirecSunat)
+                ? compania.CompaniaDireccion?.Trim()
+                : compania.CompaniaDirecSunat.Trim(),
+            CONTACTO_EMPRESA = compania.CompaniaTelefono?.Trim() ?? string.Empty,
+            DEPARTAMENTO_EMPRESA = ubigeoEmpresa?.Departamento ?? compania.CompaniaNomUBG?.Trim() ?? compania.CompaniaDistrito?.Trim(),
+            PROVINCIA_EMPRESA = ubigeoEmpresa?.Provincia ?? compania.CompaniaNomUBG?.Trim() ?? compania.CompaniaDistrito?.Trim(),
+            DISTRITO_EMPRESA = ubigeoEmpresa?.Distrito ?? compania.CompaniaDistrito?.Trim() ?? compania.CompaniaNomUBG?.Trim(),
+            CODIGO_PAIS_EMPRESA = "PE",
+            RAZON_SOCIAL_EMPRESA = compania.CompaniaRazonSocial?.Trim(),
+            USUARIO_SOL_EMPRESA = credenciales.UsuarioSOL?.Trim(),
+            PASS_SOL_EMPRESA = credenciales.ClaveSOL?.Trim(),
+            CONTRA_FIRMA = credenciales.ClaveCertificado?.Trim(),
+            TIPO_PROCESO = JsonSerializer.SerializeToElement(tipoProceso),
+            FORMA_PAGO = string.IsNullOrWhiteSpace(origen.FormaPago) ? "Contado" : origen.FormaPago.Trim(),
+            GLOSA = descripcionMotivo,
+            RUTA_PFX = credenciales.CertificadoPFX?.Trim(),
+            CODIGO_ANEXO = "0000",
+            TIPO_COMPROBANTE_MODIFICA = tipoComprobanteModifica,
+            NRO_DOCUMENTO_MODIFICA = referenciaModifica,
+            COD_TIPO_MOTIVO = codTipoMotivo,
+            DESCRIPCION_MOTIVO = descripcionMotivo,
+            detalle = detalleNc
+        };
+
+        AplicarCalculoTributarioParaEnvio(requestNc);
+        requestNc.TOTAL_LETRAS = Letras.enletras((requestNc.TOTAL ?? 0m).ToString("N2", CultureInfo.InvariantCulture)) + " SOLES";
+
+        return (requestNc, (int)HttpStatusCode.OK, "OK");
+    }
+
+    private async Task<(string Serie, string Numero)> ObtenerSerieNumeroNotaCreditoAsync(
+        int companiaId,
+        string? seriePreferida,
+        CancellationToken cancellationToken)
+    {
+        if (companiaId <= 0)
+        {
+            return (string.Empty, string.Empty);
+        }
+
+        var connectionString = _configuration.GetConnectionString("DefaultConnection");
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            return (string.Empty, string.Empty);
+        }
+
+        const string sql = """
+            DECLARE @SerieNC NVARCHAR(10) = NULLIF(LTRIM(RTRIM(@SeriePreferida)), '');
+
+            IF @SerieNC IS NULL
+            BEGIN
+                SELECT TOP (1)
+                    @SerieNC = NULLIF(LTRIM(RTRIM(d.DocuSerie)), '')
+                FROM DocumentoVenta d
+                WHERE d.CompaniaId = @CompaniaId
+                  AND d.TipoCodigo = '07'
+                  AND LEFT(ISNULL(d.DocuSerie, ''), 2) = 'BN'
+                  AND NULLIF(LTRIM(RTRIM(d.DocuSerie)), '') IS NOT NULL
+                ORDER BY d.DocuId DESC;
+            END;
+
+            IF @SerieNC IS NULL
+            BEGIN
+                SELECT TOP (1)
+                    @SerieNC = NULLIF(LTRIM(RTRIM(SerieNC)), '')
+                FROM MAQUINAS
+                ORDER BY IdMaquina DESC;
+            END;
+
+            IF @SerieNC IS NULL
+            BEGIN
+                SELECT TOP (1)
+                    @SerieNC = NULLIF(LTRIM(RTRIM(d.DocuSerie)), '')
+                FROM DocumentoVenta d
+                WHERE d.CompaniaId = @CompaniaId
+                  AND d.TipoCodigo = '07'
+                  AND NULLIF(LTRIM(RTRIM(d.DocuSerie)), '') IS NOT NULL
+                ORDER BY d.DocuId DESC;
+            END;
+
+            IF @SerieNC IS NULL
+            BEGIN
+                SET @SerieNC = 'BN01';
+            END;
+
+            IF LEFT(@SerieNC, 2) <> 'BN'
+            BEGIN
+                SET @SerieNC = 'BN' + CASE WHEN LEN(@SerieNC) > 2 THEN RIGHT(@SerieNC, LEN(@SerieNC) - 2) ELSE '01' END;
+            END;
+
+            DECLARE @NumeroNC NVARCHAR(20);
+            BEGIN TRY
+                SELECT @NumeroNC = NULLIF(
+                    LTRIM(RTRIM(dbo.genenerarNroFactura(@SerieNC, @CompaniaId, 'NOTA DE CREDITO'))),
+                    ''
+                );
+            END TRY
+            BEGIN CATCH
+                SET @NumeroNC = NULL;
+            END CATCH;
+
+            IF @NumeroNC IS NULL
+            BEGIN
+                SELECT @NumeroNC = RIGHT(
+                    '00000000' + CONVERT(
+                        VARCHAR(20),
+                        ISNULL(MAX(TRY_CONVERT(INT, RIGHT(d.DocuNumero, 8))), 0) + 1
+                    ),
+                    8
+                )
+                FROM DocumentoVenta d
+                WHERE d.CompaniaId = @CompaniaId
+                  AND d.DocuDocumento = 'NOTA DE CREDITO'
+                  AND d.DocuSerie = @SerieNC;
+            END;
+
+            SELECT
+                @SerieNC AS SerieNC,
+                @NumeroNC AS NumeroNC;
+            """;
+
+        await using var con = new SqlConnection(connectionString);
+        await using var cmd = new SqlCommand(sql, con);
+        cmd.Parameters.AddWithValue("@CompaniaId", companiaId);
+        cmd.Parameters.AddWithValue("@SeriePreferida", (object?)seriePreferida ?? DBNull.Value);
+
+        await con.OpenAsync(cancellationToken);
+        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken))
+        {
+            return (string.Empty, string.Empty);
+        }
+
+        var serie = reader["SerieNC"]?.ToString()?.Trim() ?? string.Empty;
+        var numero = reader["NumeroNC"]?.ToString()?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(numero))
+        {
+            numero = "00000001";
+        }
+        return (serie, numero);
+    }
+
+    private static string ResolverSerieNcParaBoleta(string? serieBoleta)
+    {
+        var serieLimpia = (serieBoleta ?? string.Empty).Trim().ToUpperInvariant();
+        if (string.IsNullOrWhiteSpace(serieLimpia))
+        {
+            return "BN01";
+        }
+
+        if (serieLimpia.Length >= 4 && serieLimpia.StartsWith("BA", StringComparison.Ordinal))
+        {
+            return $"BN{serieLimpia.Substring(2)}";
+        }
+
+        if (serieLimpia.StartsWith("B", StringComparison.Ordinal) && serieLimpia.Length >= 2)
+        {
+            return $"BN{serieLimpia.Substring(1)}";
+        }
+
+        if (serieLimpia.StartsWith("BN", StringComparison.Ordinal))
+        {
+            return serieLimpia;
+        }
+
+        return "BN01";
+    }
+
+    private async Task<string> ObtenerTicketResumenBoletaAsync(
+        NotaCreditoOrigenBd origen,
+        CancellationToken cancellationToken)
+    {
+        if (origen.CompaniaId <= 0 ||
+            string.IsNullOrWhiteSpace(origen.Serie) ||
+            string.IsNullOrWhiteSpace(origen.Numero))
+        {
+            return string.Empty;
+        }
+
+        var connectionString = _configuration.GetConnectionString("DefaultConnection");
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            return string.Empty;
+        }
+
+        var comprobante = $"{origen.Serie}-{origen.Numero}";
+
+        const string sql = """
+            SELECT TOP (1)
+                ISNULL(LTRIM(RTRIM(ResumenTiket)), '') AS Ticket,
+                ISNULL(LTRIM(RTRIM(RangoNumero)), '') AS RangoNumero,
+                FechaReferencia,
+                ResumenId
+            FROM ResumenBoletas
+            WHERE CompaniaId = @CompaniaId
+              AND ISNULL(LTRIM(RTRIM(ResumenTiket)), '') <> ''
+              AND (
+                    UPPER(ISNULL(RangoNumero, '')) LIKE '%' + UPPER(@Comprobante) + '%'
+                 OR UPPER(ISNULL(RangoNumero, '')) LIKE '%' + UPPER(@NumeroSolo) + '%'
+                  )
+            ORDER BY ResumenId DESC;
+            """;
+
+        await using var con = new SqlConnection(connectionString);
+        await using var cmd = new SqlCommand(sql, con);
+        cmd.Parameters.AddWithValue("@CompaniaId", origen.CompaniaId);
+        cmd.Parameters.AddWithValue("@Comprobante", comprobante);
+        cmd.Parameters.AddWithValue("@NumeroSolo", origen.Numero);
+
+        await con.OpenAsync(cancellationToken);
+        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+        if (await reader.ReadAsync(cancellationToken))
+        {
+            var ticket = reader["Ticket"]?.ToString()?.Trim() ?? string.Empty;
+            if (!string.IsNullOrWhiteSpace(ticket))
+            {
+                return ticket;
+            }
+        }
+
+        const string sqlFallback = """
+            SELECT TOP (200)
+                ISNULL(LTRIM(RTRIM(ResumenTiket)), '') AS Ticket,
+                ISNULL(LTRIM(RTRIM(RangoNumero)), '') AS RangoNumero,
+                ResumenId
+            FROM ResumenBoletas
+            WHERE CompaniaId = @CompaniaId
+              AND ISNULL(LTRIM(RTRIM(ResumenTiket)), '') <> ''
+            ORDER BY ResumenId DESC;
+            """;
+
+        await using var cmdFallback = new SqlCommand(sqlFallback, con);
+        cmdFallback.Parameters.AddWithValue("@CompaniaId", origen.CompaniaId);
+        await using var readerFallback = await cmdFallback.ExecuteReaderAsync(cancellationToken);
+        while (await readerFallback.ReadAsync(cancellationToken))
+        {
+            var ticket = readerFallback["Ticket"]?.ToString()?.Trim() ?? string.Empty;
+            var rangoNumero = readerFallback["RangoNumero"]?.ToString()?.Trim() ?? string.Empty;
+            if (!string.IsNullOrWhiteSpace(ticket) &&
+                RangoResumenContieneBoleta(rangoNumero, origen.Serie, origen.Numero))
+            {
+                return ticket;
+            }
+        }
+
+        return string.Empty;
     }
 
     private async Task<object> RegistrarResumenEnBaseDatosAsync(
@@ -3068,6 +4440,11 @@ public class NotaController : ControllerBase
         return string.Equals((notaDocu ?? string.Empty).Trim(), "FACTURA", StringComparison.OrdinalIgnoreCase);
     }
 
+    private static bool EsBoleta(string? notaDocu)
+    {
+        return string.Equals((notaDocu ?? string.Empty).Trim(), "BOLETA", StringComparison.OrdinalIgnoreCase);
+    }
+
     private static long? ExtraerNotaIdDeRegistro(string? resultadoRegistro)
     {
         if (string.IsNullOrWhiteSpace(resultadoRegistro))
@@ -3191,14 +4568,448 @@ public class NotaController : ControllerBase
             "UND" => "NIU",
             "UNID" => "NIU",
             "UNIDAD" => "NIU",
+            "UNIDADES" => "NIU",
+            "NIU" => "NIU",
             "CAJA" => "BX",
-            _ => valor
+            "CAJAS" => "BX",
+            "BX" => "BX",
+            "KG" => "KGM",
+            "KILO" => "KGM",
+            "KGM" => "KGM",
+            "LITRO" => "LTR",
+            "LTR" => "LTR",
+            _ => "NIU"
         };
     }
 
     private static decimal DecimalMax(decimal left, decimal right)
     {
         return left >= right ? left : right;
+    }
+
+    private static bool EsResultadoEdicionExitosa(string? resultado)
+    {
+        if (string.IsNullOrWhiteSpace(resultado))
+        {
+            return false;
+        }
+
+        var valor = resultado.Trim();
+        return string.Equals(valor, "UPDATED", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(valor, "true", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(valor, "ok", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool EsDocumentoConIgv18(string? documento)
+    {
+        var valor = (documento ?? string.Empty).Trim().ToUpperInvariant();
+        return valor is "FACTURA" or "BOLETA";
+    }
+
+    private static bool EsTipoDocumentoSunatConIgv18(string? codigoTipoDocumento)
+    {
+        var codigo = (codigoTipoDocumento ?? string.Empty).Trim();
+        return codigo is "01" or "03" or "07" or "08";
+    }
+
+    private static TributacionDocumento CalcularTributacionDocumento(string? documento, decimal totalDocumento, decimal icbper)
+    {
+        return CalcularTributacionDocumento(totalDocumento, icbper, EsDocumentoConIgv18(documento), PorcentajeIgvDefault);
+    }
+
+    private static TributacionDocumento CalcularTributacionDocumento(decimal totalDocumento, decimal icbper, bool aplicaIgv, decimal porcentajeIgv)
+    {
+        var total = DecimalMax(0m, totalDocumento);
+        var totalIcbper = DecimalMax(0m, icbper);
+        var totalSinIcbper = DecimalMax(0m, total - totalIcbper);
+
+        if (!aplicaIgv || porcentajeIgv <= 0m)
+        {
+            return new TributacionDocumento
+            {
+                Total = total,
+                SubTotal = totalSinIcbper,
+                Igv = 0m,
+                Gravada = totalSinIcbper
+            };
+        }
+
+        var divisor = 1m + (porcentajeIgv / 100m);
+        var subTotal = totalSinIcbper / divisor;
+        var igv = totalSinIcbper - subTotal;
+
+        return new TributacionDocumento
+        {
+            Total = total,
+            SubTotal = subTotal,
+            Igv = igv,
+            Gravada = subTotal
+        };
+    }
+
+    private static void AplicarReglaTributariaDocumento(NotaPedido nota, IReadOnlyList<DetalleNota> detalles)
+    {
+        var totalIcbper = nota.ICBPER ?? 0m;
+        var totalDetalle = detalles.Sum(x => x.DetalleImporte ?? 0m);
+        var totalDocumento = nota.NotaTotal ?? (totalDetalle + totalIcbper);
+        var calculo = CalcularTributacionDocumento(nota.NotaDocu, totalDocumento, totalIcbper);
+
+        nota.NotaTotal = calculo.Total;
+        nota.NotaSubtotal = calculo.SubTotal;
+        nota.NotaPagar ??= calculo.Total;
+    }
+
+    private static decimal SumarImporteDetalleJson(JArray? detalleArray, JObject? detalleObjeto)
+    {
+        decimal total = 0m;
+
+        if (detalleArray is not null)
+        {
+            foreach (var item in detalleArray)
+            {
+                total += ObtenerDecimalDesdeToken(item?["importe"] ?? item?["DetalleImporte"]);
+            }
+
+            return total;
+        }
+
+        if (detalleObjeto is null)
+        {
+            return total;
+        }
+
+        foreach (var property in detalleObjeto.Properties())
+        {
+            total += ObtenerDecimalDesdeToken(property.Value?["importe"] ?? property.Value?["DetalleImporte"]);
+        }
+
+        return total;
+    }
+
+    private static decimal ObtenerDecimalDesdeToken(JToken? token)
+    {
+        if (token is null)
+        {
+            return 0m;
+        }
+
+        if (decimal.TryParse(token.ToString(), NumberStyles.Any, CultureInfo.InvariantCulture, out var valueInvariant))
+        {
+            return valueInvariant;
+        }
+
+        return decimal.TryParse(token.ToString(), NumberStyles.Any, CultureInfo.CurrentCulture, out var valueCurrent)
+            ? valueCurrent
+            : 0m;
+    }
+
+    private static void AplicarCalculoTributarioParaEnvio(EnviarFacturaRequest request)
+    {
+        request.detalle ??= new List<EnviarFacturaDetalleRequest>();
+        if (request.detalle.Count == 0)
+        {
+            request.SUB_TOTAL ??= 0m;
+            request.TOTAL_GRAVADAS ??= 0m;
+            request.TOTAL_IGV ??= 0m;
+            request.TOTAL ??= request.TOTAL_ICBPER ?? 0m;
+            return;
+        }
+
+        var porcentajeIgv = request.POR_IGV ?? PorcentajeIgvDefault;
+        request.POR_IGV = porcentajeIgv;
+
+        foreach (var item in request.detalle)
+        {
+            item.item ??= 0;
+            item.cantidad ??= 0m;
+            item.codTipoOperacion = string.IsNullOrWhiteSpace(item.codTipoOperacion) ? "10" : item.codTipoOperacion.Trim();
+            if (!item.importe.HasValue && item.cantidad > 0 && item.precio.HasValue)
+            {
+                item.importe = item.cantidad.Value * item.precio.Value;
+            }
+
+            if (!item.importe.HasValue && item.cantidad > 0 && item.precioSinImpuesto.HasValue)
+            {
+                item.importe = item.cantidad.Value * item.precioSinImpuesto.Value;
+            }
+
+            if (!item.precio.HasValue && item.cantidad > 0 && item.importe.HasValue)
+            {
+                item.precio = item.importe.Value / item.cantidad.Value;
+            }
+
+            item.importe ??= 0m;
+            item.precio ??= 0m;
+            item.igv ??= 0m;
+            item.subTotal ??= 0m;
+            item.precioSinImpuesto ??= 0m;
+            item.descuento ??= 0m;
+            item.isc ??= 0m;
+        }
+
+        request.TOTAL_ICBPER ??= request.detalle.Sum(x => Convert.ToDecimal(x.impuestoIcbper ?? 0d));
+        request.TOTAL_ISC ??= request.detalle.Sum(x => x.isc ?? 0m);
+        request.TOTAL_OTR_IMP ??= 0m;
+        request.TOTAL_GRATUITAS ??= 0m;
+        request.TOTAL_DESCUENTO ??= request.detalle.Sum(x => x.descuento ?? 0m);
+
+        var totalBrutoDetalle = request.detalle.Sum(x => x.importe ?? 0m);
+        request.TOTAL ??= totalBrutoDetalle + (request.TOTAL_ICBPER ?? 0m);
+
+        var totalDocumento = request.TOTAL ?? 0m;
+        var totalIcbper = request.TOTAL_ICBPER ?? 0m;
+        var totalSinIcbper = DecimalMax(0m, totalDocumento - totalIcbper);
+        var aplicaIgv = EsTipoDocumentoSunatConIgv18(request.COD_TIPO_DOCUMENTO);
+
+        var detalleGravado = new List<EnviarFacturaDetalleRequest>();
+        decimal totalExonerado = 0m;
+        decimal totalInafecto = 0m;
+        decimal totalExportacion = 0m;
+
+        foreach (var item in request.detalle)
+        {
+            var operacion = (item.codTipoOperacion ?? "10").Trim();
+            var importeBruto = item.importe ?? 0m;
+
+            switch (operacion)
+            {
+                case "20":
+                    totalExonerado += importeBruto;
+                    break;
+                case "30":
+                    totalInafecto += importeBruto;
+                    break;
+                case "40":
+                    totalExportacion += importeBruto;
+                    break;
+                default:
+                    detalleGravado.Add(item);
+                    break;
+            }
+        }
+
+        var totalNoGravado = totalExonerado + totalInafecto + totalExportacion;
+        var totalGravadoConIgv = DecimalMax(0m, totalSinIcbper - totalNoGravado);
+        var calculoGravado = CalcularTributacionDocumento(totalGravadoConIgv, 0m, aplicaIgv, porcentajeIgv);
+        var sumaBrutaGravada = detalleGravado.Sum(x => x.importe ?? 0m);
+
+        decimal restanteBruto = totalGravadoConIgv;
+        decimal restanteSubTotal = calculoGravado.SubTotal;
+        decimal restanteIgv = calculoGravado.Igv;
+
+        for (var i = 0; i < detalleGravado.Count; i++)
+        {
+            var item = detalleGravado[i];
+            var cantidad = item.cantidad ?? 0m;
+            var brutoOriginal = item.importe ?? 0m;
+            var esUltimo = i == detalleGravado.Count - 1;
+
+            var importeBrutoLinea = esUltimo
+                ? restanteBruto
+                : (sumaBrutaGravada > 0m ? totalGravadoConIgv * (brutoOriginal / sumaBrutaGravada) : 0m);
+
+            if (importeBrutoLinea < 0m)
+            {
+                importeBrutoLinea = 0m;
+            }
+
+            var subTotalLinea = esUltimo
+                ? restanteSubTotal
+                : (aplicaIgv && porcentajeIgv > 0m
+                    ? importeBrutoLinea / (1m + (porcentajeIgv / 100m))
+                    : importeBrutoLinea);
+
+            var igvLinea = esUltimo
+                ? restanteIgv
+                : (aplicaIgv ? (importeBrutoLinea - subTotalLinea) : 0m);
+
+            item.importe = subTotalLinea;
+            item.igv = igvLinea;
+            item.subTotal = subTotalLinea;
+            item.precioSinImpuesto = cantidad > 0m ? subTotalLinea / cantidad : subTotalLinea;
+            item.precio = cantidad > 0m ? importeBrutoLinea / cantidad : (item.precio ?? 0m);
+            item.biIsc ??= subTotalLinea;
+
+            restanteBruto -= importeBrutoLinea;
+            restanteSubTotal -= subTotalLinea;
+            restanteIgv -= igvLinea;
+        }
+
+        foreach (var item in request.detalle.Where(x => !detalleGravado.Contains(x)))
+        {
+            var importeBruto = item.importe ?? 0m;
+            var cantidad = item.cantidad ?? 0m;
+            item.igv = 0m;
+            item.subTotal = importeBruto;
+            item.precioSinImpuesto = cantidad > 0m ? importeBruto / cantidad : importeBruto;
+            item.precio = cantidad > 0m ? importeBruto / cantidad : (item.precio ?? 0m);
+            item.importe = importeBruto;
+            item.biIsc ??= importeBruto;
+        }
+
+        request.TOTAL_GRAVADAS = request.detalle
+            .Where(x => string.Equals((x.codTipoOperacion ?? string.Empty).Trim(), "10", StringComparison.Ordinal))
+            .Sum(x => x.importe ?? 0m);
+        request.TOTAL_EXONERADAS = request.detalle
+            .Where(x => string.Equals((x.codTipoOperacion ?? string.Empty).Trim(), "20", StringComparison.Ordinal))
+            .Sum(x => x.importe ?? 0m);
+        request.TOTAL_INAFECTA = request.detalle
+            .Where(x => string.Equals((x.codTipoOperacion ?? string.Empty).Trim(), "30", StringComparison.Ordinal))
+            .Sum(x => x.importe ?? 0m);
+        request.TOTAL_EXPORTACION = request.detalle
+            .Where(x => string.Equals((x.codTipoOperacion ?? string.Empty).Trim(), "40", StringComparison.Ordinal))
+            .Sum(x => x.importe ?? 0m);
+        request.TOTAL_IGV = request.detalle.Sum(x => x.igv ?? 0m);
+        request.SUB_TOTAL = request.detalle.Sum(x => x.importe ?? 0m);
+
+        request.TOTAL = (request.SUB_TOTAL ?? 0m)
+            + (request.TOTAL_IGV ?? 0m)
+            + (request.TOTAL_ISC ?? 0m)
+            + (request.TOTAL_ICBPER ?? 0m)
+            + (request.TOTAL_OTR_IMP ?? 0m);
+
+        NormalizarEscalaSunat(request);
+
+        if (string.IsNullOrWhiteSpace(request.TOTAL_LETRAS))
+        {
+            request.TOTAL_LETRAS = Letras.enletras((request.TOTAL ?? 0m).ToString("N2", CultureInfo.InvariantCulture)) + " SOLES";
+        }
+    }
+
+    private static void NormalizarEscalaSunat(EnviarFacturaRequest request)
+    {
+        request.detalle ??= new List<EnviarFacturaDetalleRequest>();
+
+        foreach (var item in request.detalle)
+        {
+            item.cantidad = item.cantidad.HasValue
+                ? RedondearSunat(item.cantidad.Value, DecimalesSunatPrecioUnitario)
+                : null;
+            item.precio = item.precio.HasValue
+                ? RedondearSunat(item.precio.Value, DecimalesSunatPrecioUnitario)
+                : null;
+            item.precioSinImpuesto = item.precioSinImpuesto.HasValue
+                ? RedondearSunat(item.precioSinImpuesto.Value, DecimalesSunatPrecioUnitario)
+                : null;
+            item.importe = item.importe.HasValue
+                ? RedondearSunat(item.importe.Value, DecimalesSunatMonto)
+                : null;
+            item.subTotal = item.subTotal.HasValue
+                ? RedondearSunat(item.subTotal.Value, DecimalesSunatMonto)
+                : null;
+            item.igv = item.igv.HasValue
+                ? RedondearSunat(item.igv.Value, DecimalesSunatMonto)
+                : null;
+            item.biIsc = item.biIsc.HasValue
+                ? RedondearSunat(item.biIsc.Value, DecimalesSunatMonto)
+                : null;
+            item.isc = item.isc.HasValue
+                ? RedondearSunat(item.isc.Value, DecimalesSunatMonto)
+                : null;
+            item.descuento = item.descuento.HasValue
+                ? RedondearSunat(item.descuento.Value, DecimalesSunatMonto)
+                : null;
+        }
+
+        request.TOTAL_GRAVADAS = RedondearSunat(request.detalle
+            .Where(x => string.Equals((x.codTipoOperacion ?? string.Empty).Trim(), "10", StringComparison.Ordinal))
+            .Sum(x => x.importe ?? 0m), DecimalesSunatMonto);
+        request.TOTAL_EXONERADAS = RedondearSunat(request.detalle
+            .Where(x => string.Equals((x.codTipoOperacion ?? string.Empty).Trim(), "20", StringComparison.Ordinal))
+            .Sum(x => x.importe ?? 0m), DecimalesSunatMonto);
+        request.TOTAL_INAFECTA = RedondearSunat(request.detalle
+            .Where(x => string.Equals((x.codTipoOperacion ?? string.Empty).Trim(), "30", StringComparison.Ordinal))
+            .Sum(x => x.importe ?? 0m), DecimalesSunatMonto);
+        request.TOTAL_EXPORTACION = RedondearSunat(request.detalle
+            .Where(x => string.Equals((x.codTipoOperacion ?? string.Empty).Trim(), "40", StringComparison.Ordinal))
+            .Sum(x => x.importe ?? 0m), DecimalesSunatMonto);
+        request.TOTAL_IGV = RedondearSunat(request.detalle.Sum(x => x.igv ?? 0m), DecimalesSunatMonto);
+        request.TOTAL_ISC = RedondearSunat(request.detalle.Sum(x => x.isc ?? 0m), DecimalesSunatMonto);
+        request.SUB_TOTAL = RedondearSunat(request.detalle.Sum(x => x.importe ?? 0m), DecimalesSunatMonto);
+        request.TOTAL_DESCUENTO = RedondearSunat(request.TOTAL_DESCUENTO ?? request.detalle.Sum(x => x.descuento ?? 0m), DecimalesSunatMonto);
+        request.TOTAL_ICBPER = RedondearSunat(request.TOTAL_ICBPER ?? request.detalle.Sum(x => Convert.ToDecimal(x.impuestoIcbper ?? 0d)), DecimalesSunatMonto);
+        request.TOTAL_OTR_IMP = RedondearSunat(request.TOTAL_OTR_IMP ?? 0m, DecimalesSunatMonto);
+        request.TOTAL_GRATUITAS = RedondearSunat(request.TOTAL_GRATUITAS ?? 0m, DecimalesSunatMonto);
+
+        request.TOTAL = RedondearSunat((request.SUB_TOTAL ?? 0m)
+            + (request.TOTAL_IGV ?? 0m)
+            + (request.TOTAL_ISC ?? 0m)
+            + (request.TOTAL_ICBPER ?? 0m)
+            + (request.TOTAL_OTR_IMP ?? 0m), DecimalesSunatMonto);
+    }
+
+    private static decimal RedondearSunat(decimal value, int decimales)
+    {
+        return Math.Round(value, decimales, MidpointRounding.AwayFromZero);
+    }
+
+    private async Task ActualizarTributacionPostEdicionAsync(NotaPedido nota, IReadOnlyList<DetalleNota> detalles, CancellationToken cancellationToken)
+    {
+        if (nota.NotaId <= 0)
+        {
+            return;
+        }
+
+        try
+        {
+            var connectionString = _configuration.GetConnectionString("DefaultConnection");
+            if (string.IsNullOrWhiteSpace(connectionString))
+            {
+                return;
+            }
+
+            var totalIcbper = nota.ICBPER ?? 0m;
+            var totalDetalle = detalles.Sum(x => x.DetalleImporte ?? 0m);
+            var totalDocumento = nota.NotaTotal ?? (totalDetalle + totalIcbper);
+            var calculo = CalcularTributacionDocumento(nota.NotaDocu, totalDocumento, totalIcbper);
+
+            await using var con = new SqlConnection(connectionString);
+            await con.OpenAsync(cancellationToken);
+
+            const string sqlNota = """
+                UPDATE NotaPedido
+                SET NotaSubtotal = @NotaSubtotal,
+                    NotaTotal = @NotaTotal,
+                    ICBPER = @ICBPER,
+                    NotaPagar = CASE WHEN ISNULL(NotaPagar, 0) = 0 THEN @NotaTotal ELSE NotaPagar END
+                WHERE NotaId = @NotaId;
+                """;
+
+            await using (var cmdNota = new SqlCommand(sqlNota, con))
+            {
+                cmdNota.Parameters.AddWithValue("@NotaId", nota.NotaId);
+                cmdNota.Parameters.AddWithValue("@NotaSubtotal", calculo.SubTotal);
+                cmdNota.Parameters.AddWithValue("@NotaTotal", calculo.Total);
+                cmdNota.Parameters.AddWithValue("@ICBPER", totalIcbper);
+                await cmdNota.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            const string sqlDocumentoVenta = """
+                UPDATE DocumentoVenta
+                SET DocuSubTotal = @DocuSubTotal,
+                    DocuIgv = @DocuIgv,
+                    DocuGravada = @DocuGravada,
+                    DocuDescuento = @DocuDescuento,
+                    ICBPER = @ICBPER,
+                    DocuTotal = @DocuTotal
+                WHERE NotaId = @NotaId
+                  AND TipoCodigo IN ('01', '03');
+                """;
+
+            await using var cmdDocu = new SqlCommand(sqlDocumentoVenta, con);
+            cmdDocu.Parameters.AddWithValue("@NotaId", nota.NotaId);
+            cmdDocu.Parameters.AddWithValue("@DocuSubTotal", calculo.SubTotal);
+            cmdDocu.Parameters.AddWithValue("@DocuIgv", calculo.Igv);
+            cmdDocu.Parameters.AddWithValue("@DocuGravada", calculo.Gravada);
+            cmdDocu.Parameters.AddWithValue("@DocuDescuento", nota.NotaDescuento ?? 0m);
+            cmdDocu.Parameters.AddWithValue("@ICBPER", totalIcbper);
+            cmdDocu.Parameters.AddWithValue("@DocuTotal", calculo.Total);
+            await cmdDocu.ExecuteNonQueryAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "No se pudo ajustar la cabecera tributaria tras editar la nota {NotaId}.", nota.NotaId);
+        }
     }
 
     private async Task<UbigeoInfo?> ObtenerUbigeoAsync(string? codigoUbigeo, CancellationToken cancellationToken)
@@ -3371,7 +5182,13 @@ public class NotaController : ControllerBase
 
     private static string FormatearDecimalListaOrden(decimal valor)
     {
-        return valor.ToString("0.00", CultureInfo.InvariantCulture);
+        return FormatDecimalSinRedondeo(valor);
+    }
+
+    private static string FormatearDecimalListaOrden(decimal valor, int decimales)
+    {
+        _ = decimales;
+        return FormatDecimalSinRedondeo(valor);
     }
 
     private static EnviarResumenBoletasRequest NormalizarRequestParaBaja(EnviarResumenBoletasRequest request)
@@ -3515,6 +5332,328 @@ public class NotaController : ControllerBase
         return "ANULACION DE DOCUMENTO";
     }
 
+    private async Task<string?> ConstruirListaOrdenNotaCreditoDesdeBdAsync(
+        EnviarFacturaRequest request,
+        string codSunat,
+        string mensajeSunat,
+        string hashCpe,
+        CancellationToken cancellationToken)
+    {
+        var origen = await ObtenerOrigenNotaCreditoDesdeBdAsync(request, cancellationToken);
+        if (origen is null || origen.Detalles.Count == 0)
+        {
+            return null;
+        }
+
+        var (serieNc, numeroNc) = SepararSerieNumeroComprobante(request.NRO_COMPROBANTE);
+        if (string.IsNullOrWhiteSpace(serieNc) || string.IsNullOrWhiteSpace(numeroNc))
+        {
+            return null;
+        }
+
+        var fechaDocumento = DateTime.TryParseExact(
+            request.FECHA_DOCUMENTO?.Trim(),
+            "yyyy-MM-dd",
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.None,
+            out var fechaDoc)
+            ? fechaDoc
+            : DateTime.Today;
+
+        var subTotal = request.SUB_TOTAL ?? origen.SubTotal;
+        var igv = request.TOTAL_IGV ?? origen.Igv;
+        var total = request.TOTAL ?? origen.Total;
+        var gravada = request.TOTAL_GRAVADAS ?? (subTotal > 0m ? subTotal : origen.Gravada);
+        var descuento = request.TOTAL_DESCUENTO ?? origen.Descuento;
+        var icbper = request.TOTAL_ICBPER ?? origen.Icbper;
+        var formaPago = string.IsNullOrWhiteSpace(request.FORMA_PAGO)
+            ? (string.IsNullOrWhiteSpace(origen.FormaPago) ? "Contado" : origen.FormaPago)
+            : request.FORMA_PAGO!.Trim();
+        var concepto = DocuConceptoNotaCreditoDefault;
+        var referencia = string.IsNullOrWhiteSpace(request.NRO_DOCUMENTO_MODIFICA)
+            ? $"{origen.Serie}-{origen.Numero}"
+            : request.NRO_DOCUMENTO_MODIFICA!.Trim();
+        var totalLetras = string.IsNullOrWhiteSpace(request.TOTAL_LETRAS)
+            ? "CERO CON 00/100 SOLES"
+            : request.TOTAL_LETRAS!.Trim();
+
+        var clienteRuc = origen.ClienteRuc;
+        var clienteDni = origen.ClienteDni;
+        if (!string.IsNullOrWhiteSpace(request.NRO_DOCUMENTO_CLIENTE))
+        {
+            var tipoDocCliente = (request.TIPO_DOCUMENTO_CLIENTE ?? string.Empty).Trim();
+            if (tipoDocCliente == "6")
+            {
+                clienteRuc = request.NRO_DOCUMENTO_CLIENTE.Trim();
+                clienteDni = string.Empty;
+            }
+            else if (tipoDocCliente == "1")
+            {
+                clienteDni = request.NRO_DOCUMENTO_CLIENTE.Trim();
+                clienteRuc = string.Empty;
+            }
+        }
+
+        var efectivo = origen.Efectivo > 0m ? -origen.Efectivo : origen.Efectivo;
+        var deposito = origen.Deposito > 0m ? -origen.Deposito : origen.Deposito;
+
+        var cabecera = string.Join("|", new[]
+        {
+            origen.CompaniaId.ToString(CultureInfo.InvariantCulture),                                    // 1
+            origen.NotaId.ToString(CultureInfo.InvariantCulture),                                        // 2
+            "NOTA DE CREDITO",                                                                           // 3
+            SanitizarCampoListaOrden(numeroNc),                                                          // 4
+            origen.ClienteId.ToString(CultureInfo.InvariantCulture),                                     // 5
+            fechaDocumento.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),                         // 6
+            FormatearDecimalListaOrden(subTotal),                                                        // 7
+            FormatearDecimalListaOrden(igv),                                                             // 8
+            FormatearDecimalListaOrden(total),                                                           // 9
+            SanitizarCampoListaOrden(origen.Usuario),                                                    // 10
+            SanitizarCampoListaOrden(serieNc),                                                           // 11
+            "07",                                                                                         // 12
+            FormatearDecimalListaOrden(descuento),                                                       // 13
+            origen.DocuId.ToString(CultureInfo.InvariantCulture),                                        // 14
+            SanitizarCampoListaOrden(concepto),                                                          // 15
+            SanitizarCampoListaOrden(hashCpe),                                                           // 16
+            "ENVIADO",                                                                                    // 17
+            SanitizarCampoListaOrden(totalLetras),                                                       // 18
+            SanitizarCampoListaOrden(referencia),                                                        // 19
+            FormatearDecimalListaOrden(icbper),                                                          // 20
+            SanitizarCampoListaOrden(codSunat),                                                          // 21
+            SanitizarCampoListaOrden(mensajeSunat),                                                      // 22
+            FormatearDecimalListaOrden(gravada),                                                         // 23
+            FormatearDecimalListaOrden(descuento),                                                       // 24
+            FormatearDecimalListaOrden(efectivo),                                                        // 25
+            FormatearDecimalListaOrden(deposito),                                                        // 26
+            SanitizarCampoListaOrden(origen.ClienteRazon),                                               // 27
+            SanitizarCampoListaOrden(clienteRuc),                                                        // 28
+            SanitizarCampoListaOrden(clienteDni),                                                        // 29
+            SanitizarCampoListaOrden(origen.DireccionFiscal),                                            // 30
+            SanitizarCampoListaOrden(formaPago),                                                         // 31
+            SanitizarCampoListaOrden(origen.EntidadBancaria),                                            // 32
+            SanitizarCampoListaOrden(origen.NroOperacion)                                                // 33
+        });
+
+        var detalle = string.Join(";", origen.Detalles.Select(d => string.Join("|", new[]
+        {
+            FormatearDecimalListaOrden(d.Cantidad),
+            SanitizarCampoListaOrden(d.Um),
+            SanitizarCampoListaOrden(d.Descripcion),
+            FormatearDecimalListaOrden(d.Precio),
+            FormatearDecimalListaOrden(d.Importe),
+            d.DetalleNotaId.ToString(CultureInfo.InvariantCulture),
+            d.IdProducto.ToString(CultureInfo.InvariantCulture),
+            FormatearDecimalListaOrden(d.ValorUm, 4),
+            FormatearDecimalListaOrden(d.Costo, 4),
+            SanitizarCampoListaOrden(d.AplicaInv)
+        })));
+
+        if (string.IsNullOrWhiteSpace(detalle))
+        {
+            return null;
+        }
+
+        // uspinsertarNC del script actual espera tres bloques: CABECERA[DETALLE[GUIA
+        return $"{cabecera}[{detalle}[";
+    }
+
+    private async Task<NotaCreditoOrigenBd?> ObtenerOrigenNotaCreditoDesdeBdAsync(
+        EnviarFacturaRequest request,
+        CancellationToken cancellationToken)
+    {
+        var (serieRef, numeroRef) = SepararSerieNumeroComprobante(request.NRO_DOCUMENTO_MODIFICA);
+        if ((!request.DOCU_ID.HasValue || request.DOCU_ID.Value <= 0) &&
+            (string.IsNullOrWhiteSpace(serieRef) || string.IsNullOrWhiteSpace(numeroRef)))
+        {
+            return null;
+        }
+
+        var connectionString = _configuration.GetConnectionString("DefaultConnection");
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            return null;
+        }
+
+        const string sql = """
+            SELECT TOP (1)
+                d.DocuId,
+                d.TipoCodigo,
+                d.DocuEstado,
+                d.CompaniaId,
+                d.NotaId,
+                d.ClienteId,
+                d.DocuUsuario,
+                d.FormaPago,
+                d.EntidadBancaria,
+                d.NroOperacion,
+                d.Efectivo,
+                d.Deposito,
+                d.DocuSubTotal,
+                d.DocuIgv,
+                d.DocuTotal,
+                d.DocuGravada,
+                d.DocuDescuento,
+                d.ICBPER,
+                d.ClienteRazon,
+                d.ClienteRuc,
+                d.ClienteDni,
+                d.DireccionFiscal,
+                d.DocuSerie,
+                d.DocuNumero
+            FROM DocumentoVenta d
+            WHERE d.TipoCodigo IN ('01', '03')
+              AND (
+                    (@SerieRef <> '' AND @NumeroRef <> '' AND LTRIM(RTRIM(d.DocuSerie)) = @SerieRef AND LTRIM(RTRIM(d.DocuNumero)) = @NumeroRef)
+                    OR ((@SerieRef = '' OR @NumeroRef = '') AND @DocuId > 0 AND d.DocuId = @DocuId)
+                  )
+            ORDER BY CASE
+                        WHEN @SerieRef <> '' AND @NumeroRef <> '' AND LTRIM(RTRIM(d.DocuSerie)) = @SerieRef AND LTRIM(RTRIM(d.DocuNumero)) = @NumeroRef THEN 0
+                        WHEN @DocuId > 0 AND d.DocuId = @DocuId THEN 1
+                        ELSE 2
+                     END,
+                     d.DocuId DESC;
+            """;
+
+        await using var con = new SqlConnection(connectionString);
+        await using var cmd = new SqlCommand(sql, con);
+        cmd.Parameters.AddWithValue("@DocuId", request.DOCU_ID ?? 0L);
+        cmd.Parameters.AddWithValue("@SerieRef", serieRef);
+        cmd.Parameters.AddWithValue("@NumeroRef", numeroRef);
+
+        await con.OpenAsync(cancellationToken);
+        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken))
+        {
+            return null;
+        }
+
+        var docuId = reader["DocuId"] == DBNull.Value ? 0L : Convert.ToInt64(reader["DocuId"]);
+        var notaId = reader["NotaId"] == DBNull.Value ? 0L : Convert.ToInt64(reader["NotaId"]);
+        if (docuId <= 0 || notaId <= 0)
+        {
+            return null;
+        }
+
+        var origen = new NotaCreditoOrigenBd
+        {
+            DocuId = docuId,
+            TipoCodigo = reader["TipoCodigo"]?.ToString()?.Trim() ?? string.Empty,
+            Estado = reader["DocuEstado"]?.ToString()?.Trim() ?? string.Empty,
+            CompaniaId = reader["CompaniaId"] == DBNull.Value ? 0 : Convert.ToInt32(reader["CompaniaId"]),
+            NotaId = notaId,
+            ClienteId = reader["ClienteId"] == DBNull.Value ? 0L : Convert.ToInt64(reader["ClienteId"]),
+            Usuario = reader["DocuUsuario"]?.ToString()?.Trim() ?? string.Empty,
+            FormaPago = reader["FormaPago"]?.ToString()?.Trim() ?? string.Empty,
+            EntidadBancaria = reader["EntidadBancaria"]?.ToString()?.Trim() ?? string.Empty,
+            NroOperacion = reader["NroOperacion"]?.ToString()?.Trim() ?? string.Empty,
+            Efectivo = reader["Efectivo"] == DBNull.Value ? 0m : Convert.ToDecimal(reader["Efectivo"]),
+            Deposito = reader["Deposito"] == DBNull.Value ? 0m : Convert.ToDecimal(reader["Deposito"]),
+            SubTotal = reader["DocuSubTotal"] == DBNull.Value ? 0m : Convert.ToDecimal(reader["DocuSubTotal"]),
+            Igv = reader["DocuIgv"] == DBNull.Value ? 0m : Convert.ToDecimal(reader["DocuIgv"]),
+            Total = reader["DocuTotal"] == DBNull.Value ? 0m : Convert.ToDecimal(reader["DocuTotal"]),
+            Gravada = reader["DocuGravada"] == DBNull.Value ? 0m : Convert.ToDecimal(reader["DocuGravada"]),
+            Descuento = reader["DocuDescuento"] == DBNull.Value ? 0m : Convert.ToDecimal(reader["DocuDescuento"]),
+            Icbper = reader["ICBPER"] == DBNull.Value ? 0m : Convert.ToDecimal(reader["ICBPER"]),
+            ClienteRazon = reader["ClienteRazon"]?.ToString()?.Trim() ?? string.Empty,
+            ClienteRuc = reader["ClienteRuc"]?.ToString()?.Trim() ?? string.Empty,
+            ClienteDni = reader["ClienteDni"]?.ToString()?.Trim() ?? string.Empty,
+            DireccionFiscal = reader["DireccionFiscal"]?.ToString()?.Trim() ?? string.Empty,
+            Serie = reader["DocuSerie"]?.ToString()?.Trim() ?? string.Empty,
+            Numero = reader["DocuNumero"]?.ToString()?.Trim() ?? string.Empty
+        };
+
+        origen.Detalles = (await ObtenerDetallesOrigenNotaCreditoDesdeBdAsync(origen.DocuId, cancellationToken)).ToList();
+        return origen.Detalles.Count == 0 ? null : origen;
+    }
+
+    private async Task<IReadOnlyList<NotaCreditoOrigenDetalleBd>> ObtenerDetallesOrigenNotaCreditoDesdeBdAsync(
+        long docuIdOrigen,
+        CancellationToken cancellationToken)
+    {
+        var connectionString = _configuration.GetConnectionString("DefaultConnection");
+        if (string.IsNullOrWhiteSpace(connectionString) || docuIdOrigen <= 0)
+        {
+            return Array.Empty<NotaCreditoOrigenDetalleBd>();
+        }
+
+        const string sql = """
+            SELECT
+                dd.IdProducto,
+                dd.DetalleCantidad,
+                dd.DetalleUM,
+                COALESCE(NULLIF(dd.DetalleDescripcion, ''), p.ProductoNombre, '') AS Descripcion,
+                dd.DetallPrecio,
+                dd.DetalleImporte,
+                COALESCE(dd.DetalleNotaId, dp.DetalleId, 0) AS DetalleNotaId,
+                COALESCE(dd.ValorUM, dp.ValorUM, 1) AS ValorUM,
+                COALESCE(dp.DetalleCosto, p.ProductoCosto, 0) AS Costo,
+                COALESCE(NULLIF(p.AplicaINV, ''), 'S') AS AplicaINV,
+                COALESCE(NULLIF(s.CodigoSunat, ''), '') AS CodigoSunat
+            FROM DetalleDocumento dd
+            LEFT JOIN DetallePedido dp
+                ON dp.DetalleId = dd.DetalleNotaId
+            LEFT JOIN Producto p
+                ON p.IdProducto = dd.IdProducto
+            LEFT JOIN Sublinea s
+                ON s.IdSubLinea = p.IdSubLinea
+            WHERE dd.DocuId = @DocuId
+            ORDER BY dd.DetalleId ASC;
+            """;
+
+        await using var con = new SqlConnection(connectionString);
+        await using var cmd = new SqlCommand(sql, con);
+        cmd.Parameters.AddWithValue("@DocuId", docuIdOrigen);
+
+        await con.OpenAsync(cancellationToken);
+        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+        var lista = new List<NotaCreditoOrigenDetalleBd>();
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            var idProducto = reader["IdProducto"] == DBNull.Value ? 0L : Convert.ToInt64(reader["IdProducto"]);
+            if (idProducto <= 0)
+            {
+                continue;
+            }
+
+            var aplicaInvRaw = reader["AplicaINV"]?.ToString()?.Trim().ToUpperInvariant();
+            var aplicaInv = aplicaInvRaw == "N" ? "N" : "S";
+
+            lista.Add(new NotaCreditoOrigenDetalleBd
+            {
+                IdProducto = idProducto,
+                Cantidad = reader["DetalleCantidad"] == DBNull.Value ? 0m : Convert.ToDecimal(reader["DetalleCantidad"]),
+                Um = reader["DetalleUM"]?.ToString()?.Trim() ?? string.Empty,
+                Descripcion = reader["Descripcion"]?.ToString()?.Trim() ?? string.Empty,
+                Precio = reader["DetallPrecio"] == DBNull.Value ? 0m : Convert.ToDecimal(reader["DetallPrecio"]),
+                Importe = reader["DetalleImporte"] == DBNull.Value ? 0m : Convert.ToDecimal(reader["DetalleImporte"]),
+                DetalleNotaId = reader["DetalleNotaId"] == DBNull.Value ? 0L : Convert.ToInt64(reader["DetalleNotaId"]),
+                ValorUm = reader["ValorUM"] == DBNull.Value ? 1m : Convert.ToDecimal(reader["ValorUM"]),
+                Costo = reader["Costo"] == DBNull.Value ? 0m : Convert.ToDecimal(reader["Costo"]),
+                AplicaInv = aplicaInv,
+                CodigoSunat = reader["CodigoSunat"]?.ToString()?.Trim() ?? string.Empty
+            });
+        }
+
+        return lista;
+    }
+
+    private static (string Serie, string Numero) SepararSerieNumeroComprobante(string? nroComprobante)
+    {
+        var valor = (nroComprobante ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(valor))
+        {
+            return (string.Empty, string.Empty);
+        }
+
+        var pos = valor.IndexOf('-', StringComparison.Ordinal);
+        if (pos <= 0 || pos >= valor.Length - 1)
+        {
+            return (string.Empty, valor);
+        }
+
+        return (valor[..pos].Trim(), valor[(pos + 1)..].Trim());
+    }
+
     private static string SanitizarCampoListaOrden(string? valor)
     {
         if (string.IsNullOrWhiteSpace(valor))
@@ -3528,6 +5667,89 @@ public class NotaController : ControllerBase
             .Replace("[", "(", StringComparison.Ordinal)
             .Replace("]", ")", StringComparison.Ordinal)
             .Replace(";", ",", StringComparison.Ordinal);
+    }
+
+    private static string ForzarDocuConceptoListaOrdenNotaCredito(string listaOrdenNc)
+    {
+        if (string.IsNullOrWhiteSpace(listaOrdenNc))
+        {
+            return listaOrdenNc;
+        }
+
+        var posSeparadorCabecera = listaOrdenNc.IndexOf('[', StringComparison.Ordinal);
+        if (posSeparadorCabecera <= 0)
+        {
+            return listaOrdenNc;
+        }
+
+        var cabecera = listaOrdenNc[..posSeparadorCabecera];
+        var resto = listaOrdenNc[posSeparadorCabecera..];
+        var campos = cabecera.Split('|');
+        if (campos.Length < 15)
+        {
+            return listaOrdenNc;
+        }
+
+        campos[14] = SanitizarCampoListaOrden(DocuConceptoNotaCreditoDefault);
+        return string.Join("|", campos) + resto;
+    }
+
+    private static bool RangoResumenContieneBoleta(string? rangoNumero, string serieBoleta, string numeroBoleta)
+    {
+        var serie = (serieBoleta ?? string.Empty).Trim().ToUpperInvariant();
+        var numero = (numeroBoleta ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(serie) || string.IsNullOrWhiteSpace(numero))
+        {
+            return false;
+        }
+
+        var rango = (rangoNumero ?? string.Empty).Trim().ToUpperInvariant();
+        if (string.IsNullOrWhiteSpace(rango))
+        {
+            return false;
+        }
+
+        var comprobante = $"{serie}-{numero}";
+        if (string.Equals(rango, comprobante, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (rango.Contains(comprobante, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        var partes = rango.Split('-', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (partes.Length != 4)
+        {
+            return false;
+        }
+
+        var serieInicio = partes[0].Trim().ToUpperInvariant();
+        var numeroInicio = partes[1].Trim();
+        var serieFin = partes[2].Trim().ToUpperInvariant();
+        var numeroFin = partes[3].Trim();
+
+        if (!string.Equals(serieInicio, serie, StringComparison.Ordinal) ||
+            !string.Equals(serieFin, serie, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        if (!int.TryParse(numeroInicio, NumberStyles.Integer, CultureInfo.InvariantCulture, out var ini) ||
+            !int.TryParse(numeroFin, NumberStyles.Integer, CultureInfo.InvariantCulture, out var fin) ||
+            !int.TryParse(numero, NumberStyles.Integer, CultureInfo.InvariantCulture, out var actual))
+        {
+            return false;
+        }
+
+        if (ini > fin)
+        {
+            (ini, fin) = (fin, ini);
+        }
+
+        return actual >= ini && actual <= fin;
     }
 
     private static string ResolverUsuarioRegistroResumen(
@@ -3743,7 +5965,120 @@ public class NotaController : ControllerBase
         }
     }
 
+    private sealed class TributacionDocumento
+    {
+        public decimal Total { get; set; }
+        public decimal SubTotal { get; set; }
+        public decimal Igv { get; set; }
+        public decimal Gravada { get; set; }
+    }
+
+    private sealed class ClienteDocumentoInfo
+    {
+        public string ClienteRazon { get; set; } = string.Empty;
+        public string ClienteRuc { get; set; } = string.Empty;
+        public string ClienteDni { get; set; } = string.Empty;
+        public string DireccionFiscal { get; set; } = string.Empty;
+    }
+
+    private sealed class NotaCreditoOrigenBd
+    {
+        public long DocuId { get; set; }
+        public string TipoCodigo { get; set; } = string.Empty;
+        public string Estado { get; set; } = string.Empty;
+        public int CompaniaId { get; set; }
+        public long NotaId { get; set; }
+        public long ClienteId { get; set; }
+        public string Usuario { get; set; } = string.Empty;
+        public string FormaPago { get; set; } = string.Empty;
+        public string EntidadBancaria { get; set; } = string.Empty;
+        public string NroOperacion { get; set; } = string.Empty;
+        public decimal Efectivo { get; set; }
+        public decimal Deposito { get; set; }
+        public decimal SubTotal { get; set; }
+        public decimal Igv { get; set; }
+        public decimal Total { get; set; }
+        public decimal Gravada { get; set; }
+        public decimal Descuento { get; set; }
+        public decimal Icbper { get; set; }
+        public string ClienteRazon { get; set; } = string.Empty;
+        public string ClienteRuc { get; set; } = string.Empty;
+        public string ClienteDni { get; set; } = string.Empty;
+        public string DireccionFiscal { get; set; } = string.Empty;
+        public string Serie { get; set; } = string.Empty;
+        public string Numero { get; set; } = string.Empty;
+        public List<NotaCreditoOrigenDetalleBd> Detalles { get; set; } = new();
+    }
+
+    private sealed class NotaCreditoOrigenDetalleBd
+    {
+        public long IdProducto { get; set; }
+        public decimal Cantidad { get; set; }
+        public string Um { get; set; } = string.Empty;
+        public string Descripcion { get; set; } = string.Empty;
+        public decimal Precio { get; set; }
+        public decimal Importe { get; set; }
+        public long DetalleNotaId { get; set; }
+        public decimal ValorUm { get; set; }
+        public decimal Costo { get; set; }
+        public string AplicaInv { get; set; } = "S";
+        public string CodigoSunat { get; set; } = string.Empty;
+    }
+
     private sealed record UbigeoInfo(string Codigo, string Departamento, string Provincia, string Distrito);
+
+    private static bool TryObtenerRangoDesdeData(string data, out DateTime fechaInicio, out DateTime fechaFin, out string? error)
+    {
+        fechaInicio = default;
+        fechaFin = default;
+        error = null;
+
+        var partes = data.Split('|');
+        if (partes.Length == 0 || string.IsNullOrWhiteSpace(partes[0]))
+        {
+            error = "Data inválido. Formato esperado: MM/dd/yyyy|MM/dd/yyyy.";
+            return false;
+        }
+
+        var formatos = new[] { "MM/dd/yyyy", "M/d/yyyy", "dd/MM/yyyy", "d/M/yyyy", "yyyy-MM-dd", "yyyy/MM/dd" };
+        if (!DateTime.TryParseExact(
+                partes[0].Trim(),
+                formatos,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.None,
+                out var fechaInicioTmp)
+            && !DateTime.TryParse(partes[0].Trim(), CultureInfo.InvariantCulture, DateTimeStyles.None, out fechaInicioTmp))
+        {
+            error = "No se pudo interpretar la fecha inicial en Data.";
+            return false;
+        }
+
+        var fechaFinTmp = fechaInicioTmp;
+        if (partes.Length > 1 && !string.IsNullOrWhiteSpace(partes[1]))
+        {
+            if (!DateTime.TryParseExact(
+                    partes[1].Trim(),
+                    formatos,
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.None,
+                    out fechaFinTmp)
+                && !DateTime.TryParse(partes[1].Trim(), CultureInfo.InvariantCulture, DateTimeStyles.None, out fechaFinTmp))
+            {
+                error = "No se pudo interpretar la fecha final en Data.";
+                return false;
+            }
+        }
+
+        if (fechaInicioTmp.Date > fechaFinTmp.Date)
+        {
+            error = "La fecha inicial no puede ser mayor que la fecha final.";
+            return false;
+        }
+
+        fechaInicio = fechaInicioTmp.Date;
+        fechaFin = fechaFinTmp.Date;
+        return true;
+    }
 }
 
 public class EnviarFacturaRequest
@@ -3853,6 +6188,15 @@ public class AnularDocumentoRequest
     public string? Data { get; set; }
 }
 
+public class AnularBoletaIndividualRequest
+{
+    public long? DOCU_ID { get; set; }
+    public string? NRO_DOCUMENTO_MODIFICA { get; set; }
+    public string? TICKET_REFERENCIA { get; set; }
+    public string? DESCRIPCION_MOTIVO { get; set; }
+    public string? FECHA_DOCUMENTO { get; set; }
+}
+
 public class ListaDocumentosRequest
 {
     public string Data { get; set; } = string.Empty;
@@ -3867,6 +6211,11 @@ public class RegistrarResumenBoletasRequest
 {
     public string? ListaOrden { get; set; }
     public string? Data { get; set; }
+}
+
+public class LdDocumentosLegacyRequest
+{
+    public string Data { get; set; } = string.Empty;
 }
 
 public class ConsultarResumenTicketRequest
