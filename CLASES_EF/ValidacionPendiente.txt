@@ -1,0 +1,75 @@
+TXTCOD_SUNAT.Text = dictionaryEnv["cod_sunat"];
+                TXT_MSJ_SUNAT.Text = dictionaryEnv["msj_sunat"];
+                TXTHASHCPE.Text = dictionaryEnv["hash_cpe"];
+                TXTHASHCDR.Text = dictionaryEnv["hash_cdr"];//validacion de sunat
+                if (TXTHASHCPE.Text.Length == 0)
+                {
+                    MessageBox.Show("Error el servicio web de sunat esta colapsado...Verificar los datos y volver al intentarlo en unos segundos", "ERROR", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    TXTCOD_SUNAT.Text = "";
+                    TXT_MSJ_SUNAT.Text = "";
+                    TXTHASHCPE.Text = "";
+                    TXTHASHCDR.Text = "";
+                }
+                else
+                {
+                    if (TXTCOD_SUNAT.Text.Length >= 1)
+                    {
+                        if (TXTCOD_SUNAT.Text == "0")
+                        {
+                            guardar("ENVIADO");
+                        }
+                        else
+                        {
+                            if (int.Parse(TXTCOD_SUNAT.Text) >= 100 && int.Parse(TXTCOD_SUNAT.Text) <= 500)
+                            {
+                                guardar("PENDIENTE");
+                            }
+                            else
+                            {
+                                if (TXTCOD_SUNAT.Text == "2022")
+                                {
+                                    MessageBox.Show(TXTCOD_SUNAT.Text + "-" + TXT_MSJ_SUNAT.Text, "ERROR", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                                    txtruc.Focus();
+                                }
+                                else if (TXTCOD_SUNAT.Text == "2325")
+                                {
+                                    MessageBox.Show(TXTCOD_SUNAT.Text + "-" + TXT_MSJ_SUNAT.Text, "ERROR", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                                    txtruc.Focus();
+                                }
+                                else if (TXTCOD_SUNAT.Text == "1033")//duplicidad de numero
+                                {
+                                    MessageBox.Show(TXTCOD_SUNAT.Text + "-" + TXT_MSJ_SUNAT.Text, "ERROR", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                                    rechazaFactura();
+                                    txtruc.Focus();
+                                }
+                                else
+                                {
+                                    if (int.Parse(TXTCOD_SUNAT.Text) >= 2000 && int.Parse(TXTCOD_SUNAT.Text) <= 3999)
+                                    {
+                                        MessageBox.Show(TXTCOD_SUNAT.Text + "-" + TXT_MSJ_SUNAT.Text, "ERROR", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                                        rechazaFactura();
+                                        txtruc.Focus();
+                                    }
+                                    else
+                                    {
+                                        MessageBox.Show(TXTCOD_SUNAT.Text + "-" + TXT_MSJ_SUNAT.Text, "ERROR", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                                        txtruc.Focus();
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    else
+                    {
+                        guardar("PENDIENTE");
+                    }
+                }
+                oReloj.Stop();
+                this.Text = ".:.TIEMPO DE RESPUESTA:  " + oReloj.Elapsed.TotalMilliseconds.ToString("N2") + " MS";
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(TXTCOD_SUNAT.Text + "-" + TXT_MSJ_SUNAT.Text + "-" + ex.ToString(), "ERROR", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                oReloj.Stop();
+                this.Text = ".:.TIEMPO DE RESPUESTA:  " + oReloj.Elapsed.TotalMilliseconds.ToString("N2") + " MS";
+            }

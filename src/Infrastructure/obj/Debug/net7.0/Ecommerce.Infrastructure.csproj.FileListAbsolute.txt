@@ -222,3 +222,7 @@ C:\Users\User\Desktop\desarrollo-sgo\BackEnd\artifacts\api-build\Ecommerce.Infra
 C:\Users\User\Desktop\desarrollo-sgo\BackEnd\artifacts\api-build\Ecommerce.Infrastructure.runtimeconfig.json
 C:\Users\User\Desktop\desarrollo-sgo\BackEnd\artifacts\api-build\Ecommerce.Infrastructure.dll
 C:\Users\User\Desktop\desarrollo-sgo\BackEnd\artifacts\api-build\Ecommerce.Infrastructure.pdb
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\artifacts\tmp-check\Ecommerce.Infrastructure.deps.json
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\artifacts\tmp-check\Ecommerce.Infrastructure.runtimeconfig.json
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\artifacts\tmp-check\Ecommerce.Infrastructure.dll
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\artifacts\tmp-check\Ecommerce.Infrastructure.pdb
