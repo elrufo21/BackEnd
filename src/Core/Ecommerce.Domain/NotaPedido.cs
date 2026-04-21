@@ -36,4 +36,5 @@ public class NotaPedido
     public string? NroOperacion { get; set; }
     public decimal? Efectivo { get; set; }
     public decimal? Deposito { get; set; }
+    public string? EstadoSunat { get; set; }
 }

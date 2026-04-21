@@ -37,6 +37,18 @@ public class NotaController : ControllerBase
         Rechazado
     }
 
+    private enum ModoErrorForzado
+    {
+        Ninguno = 0,
+        Http400 = 1,
+        Http500 = 2,
+        EnvioFallido = 3,
+        Sunat1033 = 4,
+        Sunat2116 = 5,
+        Sunat2325 = 6,
+        Sunat0109 = 7
+    }
+
     private const long MaxCertificateSizeBytes = 2 * 1024 * 1024; // 2 MB
     private const decimal PorcentajeIgvDefault = 18m;
     private const int DecimalesSunatPrecioUnitario = 10;
@@ -46,6 +58,9 @@ public class NotaController : ControllerBase
     private const string CodigoSunatNotaCreditoFallback = "01010101";
     private const string DocuConceptoNotaCreditoDefault = "ANULACION DE LA OPERACION";
     private const string MensajeTicketNoGenerado = "NO SE GENERO EL TICKET DE SUNAT,SE RETORNARAN LAS BOLETAS...FAVOR DE ENVIARLO DENUEVO EN UNOS MINUTOS";
+
+    private const bool ForzarRechazoRealFacturaSoloCrearOrden = false;
+    private const string HeaderErrorForzado = "X-Force-Error";
     private static readonly HashSet<string> AllowedCertificateExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
         ".p12",
@@ -96,6 +111,162 @@ public class NotaController : ControllerBase
         _configuration = configuration;
         _cpeGateway = cpeGateway;
         _logger = logger;
+    }
+
+    private ModoErrorForzado ObtenerModoErrorForzado()
+    {
+        return ModoErrorForzado.Ninguno;
+    }
+
+    private static Dictionary<string, string> CrearRespuestaLegacyForzada(ModoErrorForzado modo, string endpoint)
+    {
+        if (modo == ModoErrorForzado.EnvioFallido)
+        {
+            return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["flg_rta"] = "0",
+                ["mensaje"] = $"ERROR FORZADO ({endpoint}): simulación de fallo de envío a OSE/SUNAT.",
+                ["cod_sunat"] = string.Empty,
+                ["msj_sunat"] = "ERROR AL ENVIAR A LA SUNAT (FORZADO)",
+                ["hash_cpe"] = string.Empty,
+                ["hash_cdr"] = string.Empty,
+                ["cdr_base64"] = string.Empty
+            };
+        }
+
+        var (codigo, mensajeSunat) = modo switch
+        {
+            ModoErrorForzado.Sunat1033 => ("1033", "Número de comprobante ya fue informado anteriormente."),
+            ModoErrorForzado.Sunat2116 => ("2116", "El tipo de documento modificado por la Nota de credito debe ser factura electronica o ticket."),
+            ModoErrorForzado.Sunat2325 => ("2325", "El número de RUC del receptor no cumple con el formato esperado."),
+            ModoErrorForzado.Sunat0109 => ("0109", "Se produjo un error SOAP al procesar la solicitud."),
+            _ => ("9999", "Error forzado para pruebas.")
+        };
+
+        return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["flg_rta"] = "1",
+            ["mensaje"] = $"RESPUESTA FORZADA ({endpoint}): SUNAT/OSE rechazó el documento.",
+            ["cod_sunat"] = codigo,
+            ["msj_sunat"] = mensajeSunat,
+            ["hash_cpe"] = "HASH_CPE_FORZADO",
+            ["hash_cdr"] = string.Empty,
+            ["cdr_base64"] = string.Empty
+        };
+    }
+
+    private static bool EsModoErrorSunatOEnvio(ModoErrorForzado modo)
+    {
+        return modo is ModoErrorForzado.EnvioFallido
+            or ModoErrorForzado.Sunat1033
+            or ModoErrorForzado.Sunat2116
+            or ModoErrorForzado.Sunat2325
+            or ModoErrorForzado.Sunat0109;
+    }
+
+    private Dictionary<string, string>? ObtenerRespuestaLegacyForzadaSiCorresponde(string endpoint)
+    {
+        var modo = ObtenerModoErrorForzado();
+        if (!EsModoErrorSunatOEnvio(modo))
+        {
+            return null;
+        }
+
+        return CrearRespuestaLegacyForzada(modo, endpoint);
+    }
+
+    private bool TryAplicarErrorForzadoEnvioDocumento(string endpoint, out IActionResult? resultado)
+    {
+        resultado = null;
+        var modo = ObtenerModoErrorForzado();
+        if (modo == ModoErrorForzado.Ninguno)
+        {
+            return false;
+        }
+
+        if (modo == ModoErrorForzado.Http400)
+        {
+            resultado = BadRequest(new
+            {
+                ok = false,
+                mensaje = $"Error forzado ({endpoint}): BadRequest de prueba.",
+                errores = new[] { "Simulación de error habilitada por header X-Force-Error." }
+            });
+            return true;
+        }
+
+        if (modo == ModoErrorForzado.Http500)
+        {
+            resultado = StatusCode(
+                (int)HttpStatusCode.InternalServerError,
+                NormalizarRespuestaFactura(null, $"Error forzado ({endpoint}): InternalServerError de prueba."));
+            return true;
+        }
+        
+        return false;
+    }
+
+    private bool TryAplicarErrorForzadoResumen(string endpoint, out IActionResult? resultado)
+    {
+        resultado = null;
+        var modo = ObtenerModoErrorForzado();
+        if (modo == ModoErrorForzado.Ninguno)
+        {
+            return false;
+        }
+
+        if (modo == ModoErrorForzado.Http400)
+        {
+            resultado = BadRequest(new
+            {
+                ok = false,
+                mensaje = $"Error forzado ({endpoint}): BadRequest de prueba.",
+                errores = new[] { "Simulación de error habilitada por header X-Force-Error." }
+            });
+            return true;
+        }
+
+        if (modo == ModoErrorForzado.Http500)
+        {
+            resultado = StatusCode(
+                (int)HttpStatusCode.InternalServerError,
+                NormalizarRespuestaResumen(null, $"Error forzado ({endpoint}): InternalServerError de prueba."));
+            return true;
+        }
+        
+        return false;
+    }
+
+    private bool TryAplicarErrorForzadoAnulacionBoleta(AnularBoletaIndividualRequest _, out IActionResult? resultado)
+    {
+        resultado = null;
+        var modo = ObtenerModoErrorForzado();
+        if (modo == ModoErrorForzado.Ninguno)
+        {
+            return false;
+        }
+
+        if (modo == ModoErrorForzado.Http400)
+        {
+            resultado = BadRequest(new
+            {
+                ok = false,
+                mensaje = "Error forzado (boleta/anular-individual): BadRequest de prueba."
+            });
+            return true;
+        }
+
+        if (modo == ModoErrorForzado.Http500)
+        {
+            resultado = StatusCode((int)HttpStatusCode.InternalServerError, new
+            {
+                ok = false,
+                mensaje = "Error forzado (boleta/anular-individual): InternalServerError de prueba."
+            });
+            return true;
+        }
+        
+        return false;
     }
 
     [AllowAnonymous]
@@ -159,7 +330,12 @@ public class NotaController : ControllerBase
             return NotFound(new { resultado = "~" });
         }
 
-        return Ok(new { resultado });
+        var estadoSunat = ExtraerEstadoSunatDesdeResultadoSp(resultado);
+        return Ok(new
+        {
+            resultado,
+            estadoSunat
+        });
     }
 
     [AllowAnonymous]
@@ -287,6 +463,11 @@ public class NotaController : ControllerBase
                 ok = false,
                 mensaje = "Payload requerido."
             });
+        }
+
+        if (TryAplicarErrorForzadoAnulacionBoleta(request, out var respuestaForzadaAnulacion))
+        {
+            return respuestaForzadaAnulacion!;
         }
 
         if ((!request.DOCU_ID.HasValue || request.DOCU_ID.Value <= 0) &&
@@ -527,6 +708,11 @@ public class NotaController : ControllerBase
             });
         }
 
+        if (TryAplicarErrorForzadoResumen("resumen/enviar-baja", out var respuestaForzadaResumenBaja))
+        {
+            return respuestaForzadaResumenBaja!;
+        }
+
         var requestBaja = NormalizarRequestParaBaja(request);
         var modoEnvio = ResolverModoEnvioBaja(requestBaja);
 
@@ -575,7 +761,8 @@ public class NotaController : ControllerBase
         {
             var rutaPfxNormalizada = ResolverRutaPfx(requestBaja.RUTA_PFX ?? string.Empty);
             var baja = MapearBajaLegacy(requestBaja, tipoProceso.Value, rutaPfxNormalizada);
-            var respuestaLegacy = _cpeGateway.EnvioBaja(baja);
+            var respuestaLegacy = ObtenerRespuestaLegacyForzadaSiCorresponde("resumen/enviar-baja")
+                ?? _cpeGateway.EnvioBaja(baja);
             var flgRta = ObtenerValorLegacy(respuestaLegacy, "flg_rta", "0");
             var codSunat = ObtenerValorLegacy(respuestaLegacy, "cod_sunat");
             var envioOk = string.Equals(flgRta, "1", StringComparison.Ordinal) && string.IsNullOrWhiteSpace(codSunat);
@@ -617,6 +804,11 @@ public class NotaController : ControllerBase
             });
         }
 
+        if (TryAplicarErrorForzadoResumen("resumen/enviar", out var respuestaForzadaResumen))
+        {
+            return respuestaForzadaResumen!;
+        }
+
         var errores = ValidarRequestResumen(request);
         if (errores.Count > 0)
         {
@@ -643,7 +835,8 @@ public class NotaController : ControllerBase
         {
             var rutaPfxNormalizada = ResolverRutaPfx(request.RUTA_PFX ?? string.Empty);
             var resumen = MapearResumenLegacy(request, tipoProceso.Value, rutaPfxNormalizada);
-            var respuestaLegacy = _cpeGateway.EnvioResumen(resumen);
+            var respuestaLegacy = ObtenerRespuestaLegacyForzadaSiCorresponde("resumen/enviar")
+                ?? _cpeGateway.EnvioResumen(resumen);
             var flgRta = ObtenerValorLegacy(respuestaLegacy, "flg_rta", "0");
             var codSunat = ObtenerValorLegacy(respuestaLegacy, "cod_sunat");
             var envioOk = string.Equals(flgRta, "1", StringComparison.Ordinal) && string.IsNullOrWhiteSpace(codSunat);
@@ -976,6 +1169,11 @@ public class NotaController : ControllerBase
             });
         }
 
+        if (TryAplicarErrorForzadoEnvioDocumento("factura/enviar", out var respuestaForzadaFactura))
+        {
+            return respuestaForzadaFactura!;
+        }
+
         var requestFactura = NormalizarRequestFactura(request);
         var errores = ValidarRequestFactura(requestFactura);
         if (errores.Count > 0)
@@ -1028,6 +1226,11 @@ public class NotaController : ControllerBase
             });
         }
 
+        if (TryAplicarErrorForzadoEnvioDocumento("boleta/enviar", out var respuestaForzadaBoleta))
+        {
+            return respuestaForzadaBoleta!;
+        }
+
         var requestBoleta = NormalizarRequestBoleta(request);
         var errores = ValidarRequestBoleta(requestBoleta);
         if (errores.Count > 0)
@@ -1078,6 +1281,11 @@ public class NotaController : ControllerBase
                 mensaje = "Payload requerido.",
                 errores = new[] { "El body del request es obligatorio." }
             });
+        }
+
+        if (TryAplicarErrorForzadoEnvioDocumento("credito/enviar", out var respuestaForzadaNc))
+        {
+            return respuestaForzadaNc!;
         }
 
         var requestNotaCredito = NormalizarRequestNotaCredito(request);
@@ -2873,7 +3081,7 @@ public class NotaController : ControllerBase
             CONTRA_FIRMA = request.CONTRA_FIRMA?.Trim(),
             TIPO_PROCESO = tipoProceso,
             FECHA_VTO = request.FECHA_VTO?.Trim(),
-            FORMA_PAGO = request.FORMA_PAGO?.Trim(),
+            FORMA_PAGO = "Contado",
             GLOSA = request.GLOSA?.Trim(),
             RUTA_PFX = rutaPfxNormalizada,
             CODIGO_ANEXO = request.CODIGO_ANEXO?.Trim(),
@@ -3038,40 +3246,16 @@ public class NotaController : ControllerBase
 
         var mensajeSunat = ObtenerValorLegacy(respuestaLegacy, "msj_sunat");
         var hashCpe = ObtenerValorLegacy(respuestaLegacy, "hash_cpe");
-        var data = string.Join("|", new[]
-        {
-            request.NOTA_ID.Value.ToString(CultureInfo.InvariantCulture),
-            SanitizarCampoListaOrden(codSunat),
-            SanitizarCampoListaOrden(mensajeSunat),
-            SanitizarCampoListaOrden(hashCpe)
-        });
 
-        try
-        {
-            var resultado = await _mediator.ReenviarFacturaAsync(data, cancellationToken);
-            if (string.IsNullOrWhiteSpace(resultado))
-            {
-                return new
-                {
-                    ok = true,
-                    mensaje = "SUNAT/OCE aceptó la factura y se ejecutó uspReEnviarFactura, pero el SP no devolvió payload."
-                };
-            }
-
-            return new
-            {
-                ok = true,
-                resultado
-            };
-        }
-        catch (Exception ex)
-        {
-            return new
-            {
-                ok = false,
-                mensaje = $"SUNAT/OCE aceptó la factura, pero falló la actualización en BD: {ex.Message}"
-            };
-        }
+        return await RegistrarDocumentoVentaEnviadoAsync(
+            request.NOTA_ID,
+            request.DOCU_ID,
+            "01",
+            codSunat,
+            mensajeSunat,
+            hashCpe,
+            cancellationToken,
+            "factura");
     }
 
     private async Task<object> RegistrarBoletaEnBaseDatosAsync(
@@ -3100,30 +3284,128 @@ public class NotaController : ControllerBase
 
         var mensajeSunat = ObtenerValorLegacy(respuestaLegacy, "msj_sunat");
         var hashCpe = ObtenerValorLegacy(respuestaLegacy, "hash_cpe");
-        var data = string.Join("|", new[]
+
+        return await RegistrarDocumentoVentaEnviadoAsync(
+            request.NOTA_ID,
+            request.DOCU_ID,
+            "03",
+            codSunat,
+            mensajeSunat,
+            hashCpe,
+            cancellationToken,
+            "boleta");
+    }
+
+    private async Task<object> RegistrarDocumentoVentaEnviadoAsync(
+        long? notaIdInput,
+        long? docuIdInput,
+        string tipoCodigo,
+        string? codSunat,
+        string? mensajeSunat,
+        string? hashCpe,
+        CancellationToken cancellationToken,
+        string descripcionDocumento)
+    {
+        var notaId = notaIdInput.GetValueOrDefault();
+        var docuId = docuIdInput.GetValueOrDefault();
+        var descripcion = string.IsNullOrWhiteSpace(descripcionDocumento) ? "documento" : descripcionDocumento.Trim();
+
+        if (notaId <= 0 && docuId <= 0)
         {
-            request.NOTA_ID.Value.ToString(CultureInfo.InvariantCulture),
-            SanitizarCampoListaOrden(codSunat),
-            SanitizarCampoListaOrden(mensajeSunat),
-            SanitizarCampoListaOrden(hashCpe)
-        });
+            return new
+            {
+                ok = false,
+                mensaje = $"NOTA_ID o DOCU_ID es requerido para actualizar DocumentoVenta de {descripcion} en BD."
+            };
+        }
+
+        var connectionString = _configuration.GetConnectionString("DefaultConnection");
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            return new
+            {
+                ok = false,
+                mensaje = "No se encontró la cadena de conexión para actualizar DocumentoVenta."
+            };
+        }
+
+        const string sqlActualizarDocumento = """
+            ;WITH DocumentoObjetivo AS (
+                SELECT TOP (1) d.DocuId
+                FROM DocumentoVenta d
+                WHERE d.TipoCodigo = @TipoCodigo
+                  AND d.EstadoSunat IN ('PENDIENTE', 'RECHAZADO')
+                  AND (
+                        (@DocuId > 0 AND d.DocuId = @DocuId)
+                        OR (@DocuId <= 0 AND @NotaId > 0 AND d.NotaId = @NotaId)
+                      )
+                ORDER BY CASE WHEN @DocuId > 0 AND d.DocuId = @DocuId THEN 0 ELSE 1 END,
+                         CASE WHEN d.EstadoSunat = 'PENDIENTE' THEN 0 ELSE 1 END,
+                         d.DocuId DESC
+            )
+            UPDATE d
+            SET d.EstadoSunat = 'ENVIADO',
+                d.CodigoSunat = @CodigoSunat,
+                d.MensajeSunat = @MensajeSunat,
+                d.DocuHash = CASE WHEN NULLIF(@DocuHash, '') IS NULL THEN d.DocuHash ELSE @DocuHash END,
+                d.DocuEstado = CASE WHEN d.DocuEstado = 'RECHAZADO' THEN 'EMITIDO' ELSE d.DocuEstado END
+            FROM DocumentoVenta d
+            INNER JOIN DocumentoObjetivo o ON o.DocuId = d.DocuId;
+
+            SELECT @@ROWCOUNT;
+            """;
+
+        const string sqlActualizarDetalle = """
+            UPDATE DetallePedido
+            SET DetalleEstado = 'EMITIDO'
+            WHERE NotaId = @NotaId
+              AND DetalleEstado = 'PENDIENTE';
+            """;
 
         try
         {
-            var resultado = await _mediator.ReenviarFacturaAsync(data, cancellationToken);
-            if (string.IsNullOrWhiteSpace(resultado))
+            await using var con = new SqlConnection(connectionString);
+            await con.OpenAsync(cancellationToken);
+            await using var tx = await con.BeginTransactionAsync(cancellationToken);
+
+            await using var cmd = new SqlCommand(sqlActualizarDocumento, con, (SqlTransaction)tx);
+            cmd.Parameters.AddWithValue("@NotaId", notaId);
+            cmd.Parameters.AddWithValue("@DocuId", docuId);
+            cmd.Parameters.AddWithValue("@TipoCodigo", (tipoCodigo ?? string.Empty).Trim());
+            cmd.Parameters.AddWithValue("@CodigoSunat", (object?)codSunat ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@MensajeSunat", (object?)mensajeSunat ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@DocuHash", (object?)hashCpe ?? DBNull.Value);
+
+            var filasAfectadas = Convert.ToInt32(await cmd.ExecuteScalarAsync(cancellationToken) ?? 0, CultureInfo.InvariantCulture);
+            if (filasAfectadas <= 0)
             {
+                await tx.RollbackAsync(cancellationToken);
                 return new
                 {
-                    ok = true,
-                    mensaje = "SUNAT/OCE aceptó la boleta y se ejecutó uspReEnviarFactura, pero el SP no devolvió payload."
+                    ok = false,
+                    mensaje = docuId > 0
+                        ? $"No se encontró DocumentoVenta en estado PENDIENTE/RECHAZADO para DocuId={docuId}, TipoCodigo={tipoCodigo} ({descripcion})."
+                        : $"No se encontró DocumentoVenta en estado PENDIENTE/RECHAZADO para NotaId={notaId}, TipoCodigo={tipoCodigo} ({descripcion})."
                 };
             }
+
+            if (notaId > 0 && (tipoCodigo == "01" || tipoCodigo == "03"))
+            {
+                await using var cmdDetalle = new SqlCommand(sqlActualizarDetalle, con, (SqlTransaction)tx);
+                cmdDetalle.Parameters.AddWithValue("@NotaId", notaId);
+                await cmdDetalle.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            await tx.CommitAsync(cancellationToken);
 
             return new
             {
                 ok = true,
-                resultado
+                accion_bd = "actualizar_documentoventa_enviado",
+                estado_sunat = "ENVIADO",
+                cod_sunat = codSunat,
+                msj_sunat = mensajeSunat,
+                mensaje = $"SUNAT/OCE aceptó la {descripcion} y se actualizó DocumentoVenta a ENVIADO."
             };
         }
         catch (Exception ex)
@@ -3131,26 +3413,29 @@ public class NotaController : ControllerBase
             return new
             {
                 ok = false,
-                mensaje = $"SUNAT/OCE aceptó la boleta, pero falló la actualización en BD: {ex.Message}"
+                mensaje = $"SUNAT/OCE aceptó la {descripcion}, pero falló la actualización en BD: {ex.Message}"
             };
         }
     }
 
     private static EstadoResultadoSunat ResolverEstadoResultadoSunat(string? flgRta, string? codSunat)
     {
-        if (!string.Equals((flgRta ?? string.Empty).Trim(), "1", StringComparison.Ordinal))
-        {
-            return EstadoResultadoSunat.MantenerPendiente;
-        }
-
         if (!int.TryParse((codSunat ?? string.Empty).Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var codigo))
         {
+            // Si no hay codigo SUNAT parseable y flg_rta != 1, tratamos como pendiente de reintento.
             return EstadoResultadoSunat.MantenerPendiente;
         }
 
+        // Rechazos SUNAT definitivos: deben registrarse como RECHAZADO
+        // incluso si el gateway devolvio flg_rta=0.
         if (codigo == 1033 || (codigo >= 2000 && codigo <= 3999))
         {
             return EstadoResultadoSunat.Rechazado;
+        }
+
+        if (!string.Equals((flgRta ?? string.Empty).Trim(), "1", StringComparison.Ordinal))
+        {
+            return EstadoResultadoSunat.MantenerPendiente;
         }
 
         return EstadoResultadoSunat.MantenerPendiente;
@@ -3161,7 +3446,6 @@ public class NotaController : ControllerBase
         string tipoCodigo,
         Dictionary<string, string>? respuestaLegacy,
         CancellationToken cancellationToken,
-        bool actualizarNotaEnRechazo = true,
         string descripcionDocumento = "documento")
     {
         var notaId = request.NOTA_ID.GetValueOrDefault();
@@ -3196,41 +3480,38 @@ public class NotaController : ControllerBase
         var docuEstadoObjetivo = estadoResultado == EstadoResultadoSunat.Rechazado ? "RECHAZADO" : null;
 
         const string sqlActualizarDocumento = """
+            DECLARE @EstadoFinal TABLE (EstadoSunat VARCHAR(30));
+
             ;WITH UltimoPendiente AS (
                 SELECT TOP (1) d.DocuId
                 FROM DocumentoVenta d
                 WHERE d.TipoCodigo = @TipoCodigo
-                  AND d.EstadoSunat = 'PENDIENTE'
+                  AND d.EstadoSunat IN ('PENDIENTE', 'RECHAZADO')
                   AND (
                         (@DocuId > 0 AND d.DocuId = @DocuId)
                         OR (@DocuId <= 0 AND @NotaId > 0 AND d.NotaId = @NotaId)
                       )
                 ORDER BY CASE WHEN @DocuId > 0 AND d.DocuId = @DocuId THEN 0 ELSE 1 END,
+                         CASE WHEN d.EstadoSunat = 'PENDIENTE' THEN 0 ELSE 1 END,
                          d.DocuId DESC
             )
             UPDATE d
             SET d.CodigoSunat = @CodigoSunat,
                 d.MensajeSunat = @MensajeSunat,
                 d.DocuHash = CASE WHEN NULLIF(@DocuHash, '') IS NULL THEN d.DocuHash ELSE @DocuHash END,
-                d.EstadoSunat = @EstadoSunat,
+                d.EstadoSunat = CASE
+                    WHEN d.EstadoSunat = 'RECHAZADO' AND @EstadoSunat = 'PENDIENTE' THEN 'RECHAZADO'
+                    ELSE @EstadoSunat
+                END,
                 d.DocuEstado = CASE WHEN NULLIF(@DocuEstado, '') IS NULL THEN d.DocuEstado ELSE @DocuEstado END
+            OUTPUT inserted.EstadoSunat INTO @EstadoFinal(EstadoSunat)
             FROM DocumentoVenta d
             INNER JOIN UltimoPendiente u ON u.DocuId = d.DocuId;
 
-            SELECT @@ROWCOUNT;
-            """;
-
-        const string sqlActualizarNotaRechazo = """
-            UPDATE NotaPedido
-            SET NotaEstado = 'PENDIENTE'
-            WHERE NotaId = @NotaId;
-            """;
-
-        const string sqlActualizarDetalleRechazo = """
-            UPDATE DetallePedido
-            SET DetalleEstado = 'PENDIENTE'
-            WHERE NotaId = @NotaId
-              AND DetalleEstado = 'EMITIDO';
+            SELECT
+                COUNT(1) AS FilasAfectadas,
+                ISNULL(MAX(EstadoSunat), '') AS EstadoSunatFinal
+            FROM @EstadoFinal;
             """;
 
         try
@@ -3249,7 +3530,21 @@ public class NotaController : ControllerBase
             cmd.Parameters.AddWithValue("@EstadoSunat", estadoSunatObjetivo);
             cmd.Parameters.AddWithValue("@DocuEstado", (object?)docuEstadoObjetivo ?? DBNull.Value);
 
-            var filasAfectadas = Convert.ToInt32(await cmd.ExecuteScalarAsync(cancellationToken) ?? 0, CultureInfo.InvariantCulture);
+            var filasAfectadas = 0;
+            var estadoSunatFinal = estadoSunatObjetivo;
+            await using (var reader = await cmd.ExecuteReaderAsync(cancellationToken))
+            {
+                if (await reader.ReadAsync(cancellationToken))
+                {
+                    filasAfectadas = reader["FilasAfectadas"] == DBNull.Value
+                        ? 0
+                        : Convert.ToInt32(reader["FilasAfectadas"], CultureInfo.InvariantCulture);
+
+                    estadoSunatFinal = reader["EstadoSunatFinal"] == DBNull.Value
+                        ? estadoSunatObjetivo
+                        : reader["EstadoSunatFinal"].ToString() ?? estadoSunatObjetivo;
+                }
+            }
             if (filasAfectadas <= 0)
             {
                 await tx.RollbackAsync(cancellationToken);
@@ -3257,41 +3552,33 @@ public class NotaController : ControllerBase
                 {
                     ok = false,
                     mensaje = docuId > 0
-                        ? $"No se encontró DocumentoVenta pendiente para DocuId={docuId}, TipoCodigo={tipoCodigo} ({descripcion})."
-                        : $"No se encontró DocumentoVenta pendiente para NotaId={notaId}, TipoCodigo={tipoCodigo} ({descripcion}).",
+                        ? $"No se encontró DocumentoVenta en estado PENDIENTE/RECHAZADO para DocuId={docuId}, TipoCodigo={tipoCodigo} ({descripcion})."
+                        : $"No se encontró DocumentoVenta en estado PENDIENTE/RECHAZADO para NotaId={notaId}, TipoCodigo={tipoCodigo} ({descripcion}).",
                     accion_bd = "sin_documento_pendiente",
                     cod_sunat = codSunat,
                     msj_sunat = mensajeSunat
                 };
             }
 
-            if (estadoResultado == EstadoResultadoSunat.Rechazado && actualizarNotaEnRechazo && notaId > 0)
-            {
-                await using var cmdNota = new SqlCommand(sqlActualizarNotaRechazo, con, (SqlTransaction)tx);
-                cmdNota.Parameters.AddWithValue("@NotaId", notaId);
-                await cmdNota.ExecuteNonQueryAsync(cancellationToken);
-
-                await using var cmdDetalle = new SqlCommand(sqlActualizarDetalleRechazo, con, (SqlTransaction)tx);
-                cmdDetalle.Parameters.AddWithValue("@NotaId", notaId);
-                await cmdDetalle.ExecuteNonQueryAsync(cancellationToken);
-            }
-
             await tx.CommitAsync(cancellationToken);
+
+            var mantieneRechazado = estadoResultado != EstadoResultadoSunat.Rechazado
+                && string.Equals(estadoSunatFinal, "RECHAZADO", StringComparison.OrdinalIgnoreCase);
 
             return new
             {
                 ok = true,
                 accion_bd = estadoResultado == EstadoResultadoSunat.Rechazado
-                    ? (actualizarNotaEnRechazo && notaId > 0 ? "registrar_rechazo" : "registrar_rechazo_documento")
-                    : "mantener_pendiente",
-                estado_sunat = estadoSunatObjetivo,
+                    ? "registrar_rechazo_documento"
+                    : (mantieneRechazado ? "mantener_rechazado" : "mantener_pendiente"),
+                estado_sunat = estadoSunatFinal,
                 cod_sunat = codSunat,
                 msj_sunat = mensajeSunat,
                 mensaje = estadoResultado == EstadoResultadoSunat.Rechazado
-                    ? (actualizarNotaEnRechazo && notaId > 0
-                        ? "Se registró el documento como RECHAZADO y la nota volvió a estado PENDIENTE."
-                        : "Se registró el documento como RECHAZADO.")
-                    : "Se registró la respuesta SUNAT/OSE manteniendo el documento en estado PENDIENTE para reintento."
+                    ? "Se registró el documento como RECHAZADO sin alterar NotaEstado."
+                    : (mantieneRechazado
+                        ? "Se registró la respuesta SUNAT/OSE manteniendo el documento en estado RECHAZADO."
+                        : "Se registró la respuesta SUNAT/OSE manteniendo el documento en estado PENDIENTE para reintento.")
             };
         }
         catch (Exception ex)
@@ -3510,6 +3797,36 @@ public class NotaController : ControllerBase
 
         if (request.DOCU_ID.HasValue && request.DOCU_ID.Value > 0)
         {
+            var registroDirecto = await RegistrarDocumentoVentaEnviadoAsync(
+                request.NOTA_ID,
+                request.DOCU_ID,
+                "07",
+                codSunat,
+                mensajeSunat,
+                hashCpe,
+                cancellationToken,
+                "nota de crédito");
+
+            var okRegistroDirecto = string.Equals(
+                ObtenerValorNormalizadoRespuesta(registroDirecto, "ok"),
+                "true",
+                StringComparison.OrdinalIgnoreCase);
+
+            if (okRegistroDirecto)
+            {
+                var estadoActualizado = await MarcarDocumentoModificadoComoAnuladoAsync(request, cancellationToken);
+                return new
+                {
+                    ok = true,
+                    accion_bd = "actualizar_documentoventa_enviado_nc",
+                    estado_documento_modificado = estadoActualizado,
+                    registro = registroDirecto,
+                    mensaje = estadoActualizado
+                        ? "SUNAT/OCE aceptó la nota de crédito, se actualizó DocumentoVenta a ENVIADO y el documento modificado quedó ANULADO."
+                        : "SUNAT/OCE aceptó la nota de crédito y se actualizó DocumentoVenta a ENVIADO."
+                };
+            }
+
             var data = string.Join("|", new[]
             {
                 request.DOCU_ID.Value.ToString(CultureInfo.InvariantCulture),
@@ -3541,7 +3858,8 @@ public class NotaController : ControllerBase
                 {
                     ok = false,
                     accion_bd = "uspReEnviarNotaCredito",
-                    mensaje = $"SUNAT/OCE aceptó la nota de crédito, pero falló la actualización en BD: {ex.Message}"
+                    mensaje = $"SUNAT/OCE aceptó la nota de crédito, pero falló la actualización en BD: {ex.Message}",
+                    registro_previo = registroDirecto
                 };
             }
         }
@@ -3642,7 +3960,8 @@ public class NotaController : ControllerBase
     {
         var rutaPfxNormalizada = ResolverRutaPfx(requestNotaCredito.RUTA_PFX ?? string.Empty);
         var notaCredito = MapearNotaCreditoLegacy(requestNotaCredito, tipoProceso, rutaPfxNormalizada);
-        var respuestaLegacy = _cpeGateway.Envio(notaCredito);
+        var respuestaLegacy = ObtenerRespuestaLegacyForzadaSiCorresponde("credito/enviar")
+            ?? _cpeGateway.Envio(notaCredito);
 
         var flgRta = ObtenerValorLegacy(respuestaLegacy, "flg_rta", "0");
         var codSunat = ObtenerValorLegacy(respuestaLegacy, "cod_sunat");
@@ -3660,7 +3979,6 @@ public class NotaController : ControllerBase
                 tipoCodigo: "07",
                 respuestaLegacy,
                 cancellationToken,
-                actualizarNotaEnRechazo: false,
                 descripcionDocumento: "nota de crédito");
         }
         else
@@ -3670,7 +3988,6 @@ public class NotaController : ControllerBase
                 tipoCodigo: "07",
                 respuestaLegacy,
                 cancellationToken,
-                actualizarNotaEnRechazo: false,
                 descripcionDocumento: "nota de crédito");
         }
 
@@ -3680,11 +3997,13 @@ public class NotaController : ControllerBase
     private async Task<object> EjecutarEnvioFacturaAsync(
         EnviarFacturaRequest requestFactura,
         int tipoProceso,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool desdeCrearOrden = false)
     {
         var rutaPfxNormalizada = ResolverRutaPfx(requestFactura.RUTA_PFX ?? string.Empty);
         var factura = MapearFacturaLegacy(requestFactura, tipoProceso, rutaPfxNormalizada);
-        var respuestaLegacy = _cpeGateway.Envio(factura);
+        var respuestaLegacy = ObtenerRespuestaLegacyForzadaSiCorresponde("factura/enviar")
+            ?? _cpeGateway.Envio(factura);
 
         var flgRta = ObtenerValorLegacy(respuestaLegacy, "flg_rta", "0");
         var codSunat = ObtenerValorLegacy(respuestaLegacy, "cod_sunat");
@@ -3722,7 +4041,8 @@ public class NotaController : ControllerBase
     {
         var rutaPfxNormalizada = ResolverRutaPfx(requestBoleta.RUTA_PFX ?? string.Empty);
         var boleta = MapearBoletaLegacy(requestBoleta, tipoProceso, rutaPfxNormalizada);
-        var respuestaLegacy = _cpeGateway.Envio(boleta);
+        var respuestaLegacy = ObtenerRespuestaLegacyForzadaSiCorresponde("boleta/enviar")
+            ?? _cpeGateway.Envio(boleta);
 
         var flgRta = ObtenerValorLegacy(respuestaLegacy, "flg_rta", "0");
         var codSunat = ObtenerValorLegacy(respuestaLegacy, "cod_sunat");
@@ -3798,7 +4118,12 @@ public class NotaController : ControllerBase
                 return CrearRespuestaFacturaPendiente("La orden se registró, pero el TIPO_PROCESO configurado es inválido para emitir la factura.");
             }
 
-            var respuesta = await EjecutarEnvioFacturaAsync(requestFactura, tipoProceso.Value, cancellationToken);
+            if (ForzarRechazoRealFacturaSoloCrearOrden)
+            {
+                AplicarErrorRealForzadoFacturaCrearOrden(requestFactura);
+            }
+
+            var respuesta = await EjecutarEnvioFacturaAsync(requestFactura, tipoProceso.Value, cancellationToken, desdeCrearOrden: true);
             var respuestaJson = JsonSerializer.Serialize(respuesta);
             _logger.LogInformation("Resultado de emision automatica de FACTURA para NotaId {NotaId}: {Respuesta}", notaId.Value, respuestaJson);
             return respuesta;
@@ -4730,6 +5055,17 @@ public class NotaController : ControllerBase
         return string.Equals((notaDocu ?? string.Empty).Trim(), "FACTURA", StringComparison.OrdinalIgnoreCase);
     }
 
+    private static void AplicarErrorRealForzadoFacturaCrearOrden(EnviarFacturaRequest requestFactura)
+    {
+        // Forzamos inconsistencia real para que SUNAT/OSE devuelva rechazo real.
+        // Tipo documento cliente = RUC (6) pero numero con longitud de DNI (8).
+        requestFactura.TIPO_DOCUMENTO_CLIENTE = "6";
+        requestFactura.NRO_DOCUMENTO_CLIENTE = "12345678";
+        requestFactura.RAZON_SOCIAL_CLIENTE = string.IsNullOrWhiteSpace(requestFactura.RAZON_SOCIAL_CLIENTE)
+            ? "CLIENTE PRUEBA ERROR FORZADO"
+            : requestFactura.RAZON_SOCIAL_CLIENTE;
+    }
+
     private static bool EsBoleta(string? notaDocu)
     {
         return string.Equals((notaDocu ?? string.Empty).Trim(), "BOLETA", StringComparison.OrdinalIgnoreCase);
@@ -4817,6 +5153,44 @@ public class NotaController : ControllerBase
         {
             return string.Empty;
         }
+    }
+
+    private static string ExtraerEstadoSunatDesdeResultadoSp(string resultado)
+    {
+        if (string.IsNullOrWhiteSpace(resultado))
+        {
+            return string.Empty;
+        }
+
+        var partes = resultado.Split('[', 2);
+        if (partes.Length < 2 || string.IsNullOrWhiteSpace(partes[1]))
+        {
+            return string.Empty;
+        }
+
+        var detalle = partes[1];
+        var filas = detalle.Split(';', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        foreach (var fila in filas)
+        {
+            if (!fila.StartsWith("DET|", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var columnas = fila.Split('|');
+            if (columnas.Length < 2)
+            {
+                continue;
+            }
+
+            var estadoSunat = (columnas[^1] ?? string.Empty).Trim();
+            if (!string.IsNullOrWhiteSpace(estadoSunat))
+            {
+                return estadoSunat;
+            }
+        }
+
+        return string.Empty;
     }
 
     private static int ResolverTipoProcesoDesdeCredenciales(CredencialesSunat credenciales)

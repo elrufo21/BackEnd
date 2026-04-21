@@ -91,7 +91,7 @@ public static class Cadena
             if (campos.Length == 0 || campos[0] == "~") break;
 
             // Formato completo actual de dbo.listaNotaPedido:
-            // 0..43 (44 campos)
+            // 0..43 (44 campos) + opcional 44 EstadoSunat
             if (campos.Length >= 44)
             {
                 lista.Add(new EListaNota
@@ -148,7 +148,8 @@ public static class Cadena
                     EntidadBancaria = GetCampo(campos, 40),
                     NroOperacion = GetCampo(campos, 41),
                     Efectivo = GetCampo(campos, 42),
-                    Deposito = GetCampo(campos, 43)
+                    Deposito = GetCampo(campos, 43),
+                    EstadoSunat = GetCampo(campos, 44)
                 });
                 continue;
             }

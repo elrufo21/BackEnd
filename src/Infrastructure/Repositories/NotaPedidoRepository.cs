@@ -559,7 +559,13 @@ public class NotaPedidoRepository : INotaPedido
                                     EntidadBancaria,
                                     NroOperacion,
                                     Efectivo,
-                                    Deposito
+                                    Deposito,
+                                    (
+                                        SELECT TOP (1) d.EstadoSunat
+                                        FROM DocumentoVenta d
+                                        WHERE d.NotaId = NotaPedido.NotaId
+                                        ORDER BY d.DocuId DESC
+                                    ) AS EstadoSunat
                              FROM NotaPedido
                              WHERE NotaId = @Id";
 
@@ -618,7 +624,13 @@ public class NotaPedidoRepository : INotaPedido
                                     EntidadBancaria,
                                     NroOperacion,
                                     Efectivo,
-                                    Deposito
+                                    Deposito,
+                                    (
+                                        SELECT TOP (1) d.EstadoSunat
+                                        FROM DocumentoVenta d
+                                        WHERE d.NotaId = NotaPedido.NotaId
+                                        ORDER BY d.DocuId DESC
+                                    ) AS EstadoSunat
                              FROM NotaPedido
                              WHERE (@Estado IS NULL OR NotaEstado = @Estado)
                              ORDER BY NotaId DESC
@@ -910,7 +922,8 @@ public class NotaPedidoRepository : INotaPedido
             EntidadBancaria = reader["EntidadBancaria"].ToString(),
             NroOperacion = reader["NroOperacion"].ToString(),
             Efectivo = reader["Efectivo"] == DBNull.Value ? null : Convert.ToDecimal(reader["Efectivo"]),
-            Deposito = reader["Deposito"] == DBNull.Value ? null : Convert.ToDecimal(reader["Deposito"])
+            Deposito = reader["Deposito"] == DBNull.Value ? null : Convert.ToDecimal(reader["Deposito"]),
+            EstadoSunat = reader["EstadoSunat"] == DBNull.Value ? null : reader["EstadoSunat"].ToString()
         };
     }
 

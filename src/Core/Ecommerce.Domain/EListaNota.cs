@@ -56,4 +56,5 @@ public class EListaNota
     public string? NroOperacion { get; set; }
     public string? Efectivo { get; set; }
     public string? Deposito { get; set; }
+    public string? EstadoSunat { get; set; }
 }

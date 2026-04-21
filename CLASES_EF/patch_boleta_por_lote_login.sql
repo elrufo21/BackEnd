@@ -1,76 +1,83 @@
-SET ANSI_NULLS ON
-GO
-SET QUOTED_IDENTIFIER ON
-GO
-
-IF COL_LENGTH('dbo.Compania', 'BoletaPorLote') IS NULL
-BEGIN
-    ALTER TABLE dbo.Compania
-    ADD BoletaPorLote bit NOT NULL
-        CONSTRAINT DF_Compania_BoletaPorLote DEFAULT ((1));
-END
-ELSE
-BEGIN
-    IF OBJECT_ID('DF_Compania_BoletaPorLote', 'D') IS NULL
-    BEGIN
-        ALTER TABLE dbo.Compania
-        ADD CONSTRAINT DF_Compania_BoletaPorLote DEFAULT ((1)) FOR BoletaPorLote;
-    END
-END
-GO
-
-ALTER PROCEDURE [dbo].[uspValidaUsuario]
-@Data varchar(max)
-AS
-BEGIN
-    DECLARE @p1 INT, @p2 INT
-
-    DECLARE @Usuario VARCHAR(150),
-            @Clave VARCHAR(150)
-
-    SET @Data = LTRIM(RTRIM(@Data))
-    SET @p1 = CHARINDEX('|', @Data, 0)
-    SET @p2 = LEN(@Data) + 1
-
-    SET @Usuario = SUBSTRING(@Data, 1, @p1 - 1)
-    SET @Clave   = SUBSTRING(@Data, @p1 + 1, @p2 - @p1 - 1)
-
-    SELECT
-    ISNULL((
-        SELECT STUFF((
-            SELECT TOP 1
-                '¬' + CONVERT(VARCHAR, U.UsuarioID) + '|' +
-                CONVERT(VARCHAR, p.PersonalId) + '|' +
-                a.AreaNombre + '|' +
-                (
-                    (SUBSTRING(p.PersonalNombres + ' ', 1, CHARINDEX(' ', p.PersonalNombres + ' ') - 1)) + ' ' +
-                    (SUBSTRING(p.PersonalApellidos + ' ', 1, CHARINDEX(' ', p.PersonalApellidos + ' ') - 1))
-                ) + '|' +
-                CONVERT(VARCHAR, p.CompaniaId) + '|' +
-                c.CompaniaRazonSocial + '|' +
-                ISNULL(CONVERT(VARCHAR(10), U.FechaVencimientoClave, 23), '') + '|' +
-                ISNULL(CONVERT(VARCHAR(20), c.DescuentoMax), '0') + '|' +
-                ISNULL(c.CompaniaRUC, '') + '|' +
-                ISNULL(c.CompaniaNomUBG, '') + '|' +
-                ISNULL(c.CompaniaComercial, '') + '|' +
-                ISNULL(c.CompaniaDirecSunat, '') + '|' +
-                ISNULL(c.CompaniaUserSecun, '') + '|' +
-                ISNULL(c.ComapaniaPWD, '') + '|' +
-                ISNULL(c.CompaniaPFX, '') + '|' +
-                ISNULL(c.CompaniaClave, '') + '|' +
-                ISNULL(CONVERT(VARCHAR, c.TIPO_PROCESO), '3') + '|' +
-                ISNULL(c.CompaniaTelefono, '') + '|' +
-                ISNULL(CONVERT(VARCHAR, c.BoletaPorLote), '1')
-            FROM Usuarios U
-            INNER JOIN Personal p ON p.PersonalId = U.PersonalId
-            INNER JOIN Area a ON a.AreaId = p.AreaId
-            INNER JOIN Compania c ON c.CompaniaId = p.CompaniaId
-            WHERE U.UsuarioAlias = @Usuario
-              AND dbo.desincrectar(U.UsuarioClave) = @Clave
-              AND UsuarioEstado = 'ACTIVO'
-              AND p.PersonalEstado = 'ACTIVO'
-            FOR XML PATH('')
-        ), 1, 1, '')
-    ), '~')
-END
-GO
+CREATE PROCEDURE [dbo].[listaNotaPedido]    
+@FechaInicio DATE,    
+@FechaFin DATE    
+AS    
+BEGIN    
+SET NOCOUNT ON;    
+    
+SELECT    
+ISNULL((    
+SELECT STUFF((    
+SELECT    
+'¬'+    
+CONVERT(VARCHAR,n.NotaId)+'|'+    
+ISNULL(n.NotaDocu,'')+'|'+    
+    
+-- CLIENTE    
+CONVERT(VARCHAR,c.ClienteId)+'|'+    
+ISNULL(c.ClienteRazon,'')+'|'+    
+ISNULL(c.ClienteRuc,'')+'|'+    
+ISNULL(c.ClienteDni,'')+'|'+    
+ISNULL(c.ClienteDireccion,'')+'|'+    
+ISNULL(c.ClienteTelefono,'')+'|'+    
+ISNULL(c.ClienteCorreo,'')+'|'+    
+ISNULL(c.ClienteEstado,'')+'|'+    
+ISNULL(c.ClienteDespacho,'')+'|'+    
+ISNULL(c.ClienteUsuario,'')+'|'+    
+CONVERT(VARCHAR,c.ClienteFecha,103)+'|'+    
+    
+-- NOTA    
+CONVERT(VARCHAR, n.NotaFecha, 103) + ' ' + CONVERT(VARCHAR, n.NotaFecha, 108)+'|'+    
+ISNULL(n.NotaUsuario,'')+'|'+    
+ISNULL(n.NotaFormaPago,'')+'|'+    
+ISNULL(n.NotaCondicion,'')+'|'+    
+CONVERT(VARCHAR,n.NotaFechaPago,103)+'|'+    
+ISNULL(n.NotaDireccion,'')+'|'+    
+ISNULL(n.NotaTelefono,'')+'|'+    
+CONVERT(VARCHAR(50),CAST(n.NotaSubtotal AS MONEY),1)+'|'+    
+CONVERT(VARCHAR(50),CAST(n.NotaMovilidad AS MONEY),1)+'|'+    
+CONVERT(VARCHAR(50),CAST(n.NotaDescuento AS MONEY),1)+'|'+    
+CONVERT(VARCHAR(50),CAST(n.NotaTotal AS MONEY),1)+'|'+    
+CONVERT(VARCHAR(50),CAST(n.NotaAcuenta AS MONEY),1)+'|'+    
+CONVERT(VARCHAR(50),CAST(n.NotaSaldo AS MONEY),1)+'|'+    
+CONVERT(VARCHAR(50),CAST(n.NotaAdicional AS MONEY),1)+'|'+    
+CONVERT(VARCHAR(50),CAST(n.NotaTarjeta AS MONEY),1)+'|'+    
+CONVERT(VARCHAR(50),CAST(n.NotaPagar AS MONEY),1)+'|'+    
+ISNULL(n.NotaEstado,'')+'|'+    
+CONVERT(VARCHAR,n.CompaniaId)+'|'+    
+ISNULL(n.NotaEntrega,'')+'|'+    
+ISNULL(n.ModificadoPor,'')+'|'+    
+ISNULL(n.FechaEdita,'')+'|'+    
+ISNULL(n.NotaConcepto,'')+'|'+    
+ISNULL(n.NotaSerie,'')+'|'+    
+ISNULL(n.NotaNumero,'')+'|'+    
+CONVERT(VARCHAR(50),CAST(n.NotaGanancia AS MONEY),1)+'|'+    
+CONVERT(VARCHAR(50),CAST(n.ICBPER AS MONEY),1)+'|'+    
+ISNULL(n.CajaId,'')+'|'+    
+ISNULL(n.EntidadBancaria,'')+'|'+    
+ISNULL(n.NroOperacion,'')+'|'+    
+CONVERT(VARCHAR(50),CAST(n.Efectivo AS MONEY),1)+'|'+    
+CONVERT(VARCHAR(50),CAST(n.Deposito AS MONEY),1)+'|'+    
+ISNULL((
+    SELECT TOP (1) dv.EstadoSunat
+    FROM DocumentoVenta dv WITH(NOLOCK)
+    WHERE dv.NotaId = n.NotaId
+    ORDER BY dv.DocuId DESC
+),'')    
+    
+FROM NotaPedido n WITH(NOLOCK)    
+LEFT JOIN Cliente c WITH(NOLOCK)    
+ON c.ClienteId = n.ClienteId    
+    
+WHERE    
+n.NotaFecha >= @FechaInicio    
+AND n.NotaFecha < DATEADD(DAY,1,@FechaFin)    
+    
+ORDER BY n.NotaId DESC    
+FOR XML PATH('')    
+),1,1,'')    
+),'~') AS Resultado;    
+    
+END    
+  
+  

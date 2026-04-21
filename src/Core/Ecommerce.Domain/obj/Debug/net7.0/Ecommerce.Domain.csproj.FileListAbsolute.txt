@@ -166,3 +166,15 @@ C:\Users\User\Desktop\desarrollo-sgo\BackEnd\artifacts\api-build\Ecommerce.Domai
 C:\Users\User\Desktop\desarrollo-sgo\BackEnd\artifacts\tmp-check\Ecommerce.Domain.deps.json
 C:\Users\User\Desktop\desarrollo-sgo\BackEnd\artifacts\tmp-check\Ecommerce.Domain.dll
 C:\Users\User\Desktop\desarrollo-sgo\BackEnd\artifacts\tmp-check\Ecommerce.Domain.pdb
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\_build_tmp\Ecommerce.Domain.deps.json
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\_build_tmp\Ecommerce.Domain.dll
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\_build_tmp\Ecommerce.Domain.pdb
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\.tmp_build_api\Ecommerce.Domain.deps.json
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\.tmp_build_api\Ecommerce.Domain.dll
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\.tmp_build_api\Ecommerce.Domain.pdb
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\artifacts\tmp-build-verify\Ecommerce.Domain.deps.json
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\artifacts\tmp-build-verify\Ecommerce.Domain.dll
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\artifacts\tmp-build-verify\Ecommerce.Domain.pdb
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\artifacts\tmp-build-estado-sunat\Ecommerce.Domain.deps.json
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\artifacts\tmp-build-estado-sunat\Ecommerce.Domain.dll
+C:\Users\User\Desktop\desarrollo-sgo\BackEnd\artifacts\tmp-build-estado-sunat\Ecommerce.Domain.pdb

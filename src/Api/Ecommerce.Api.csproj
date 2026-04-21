@@ -24,11 +24,12 @@
 
   <ItemGroup>
     <Compile Include="..\..\CLASES_EF\*.cs"
-             Exclude="..\..\CLASES_EF\FrmNotaCV.cs;..\..\CLASES_EF\pdt.cs;..\..\CLASES_EF\pdt copy.cs"
+             Exclude="..\..\CLASES_EF\FrmNotaCV.cs;..\..\CLASES_EF\pdt.cs;..\..\CLASES_EF\pdt copy.cs;..\..\CLASES_EF\EnviarBaja.cs"
              Link="Legacy\CLASES_EF\%(Filename)%(Extension)" />
     <None Include="..\..\CLASES_EF\FrmNotaCV.cs" Link="Legacy\CLASES_EF\FrmNotaCV.cs" />
     <None Include="..\..\CLASES_EF\pdt.cs" Link="Legacy\CLASES_EF\pdt.cs" />
     <None Include="..\..\CLASES_EF\pdt copy.cs" Link="Legacy\CLASES_EF\pdt copy.cs" />
+    <None Include="..\..\CLASES_EF\EnviarBaja.cs" Link="Legacy\CLASES_EF\EnviarBaja.cs" />
   </ItemGroup>
 
 </Project>

@@ -244,3 +244,42 @@ En fallas, `registro_bd` puede devolver:
    - `msj_sunat`
    - `registro_bd.mensaje` (si existe).
 
+---
+
+## 10) Forzar errores (modo prueba temporal)
+
+Se habilitó forzado por header HTTP:
+
+- Header: `X-Force-Error`
+- Endpoints soportados:
+  - `/factura/enviar`
+  - `/boleta/enviar`
+  - `/credito/enviar`
+  - `/boleta/anular-individual`
+  - `/resumen/enviar`
+  - `/resumen/enviar-baja`
+
+Valores soportados:
+
+- `http_400`
+- `http_500`
+- `envio_fallido`
+- `sunat_1033`
+- `sunat_2116`
+- `sunat_2325`
+- `sunat_0109`
+
+Notas:
+
+- En forzado `sunat_*` y `envio_fallido` **sí se ejecuta registro en BD** (igual que un rechazo/error real).
+- En forzado `http_400` y `http_500` es respuesta directa de API (sin persistencia).
+- Para volver a normalidad, enviar sin ese header.
+
+Ejemplo `curl`:
+
+```bash
+curl -X POST "http://localhost:5000/api/v1/Nota/boleta/enviar" \
+  -H "Content-Type: application/json" \
+  -H "X-Force-Error: sunat_1033" \
+  -d "{ ... }"
+```
